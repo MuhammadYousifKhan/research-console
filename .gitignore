@@ -1,16 +1,32 @@
+# Python
 __pycache__/
-*.py[cod]
-*.egg-info/
+*.pyc
 .venv/
 venv/
+
+# Environment
 .env
-.env.*
+
+# Database
+*.db
+*.db-journal
+*.sqlite3
+*.bak
+
+# Logs
+*.log
+
+# Node
+node_modules/
+
+# Build
+dist/
+build/
+
+# IDE
 .vscode/
 .idea/
-.ipynb_checkpoints/
-dist/
-build/
-node_modules/
-.env
-dist/
-build/
+
+# OS
+.DS_Store
+Thumbs.db
