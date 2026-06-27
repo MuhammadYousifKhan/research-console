@@ -1,0 +1,15 @@
+{
+  "name": "ai-agent-root",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "concurrently -k -n backend,frontend -c green,cyan \"py -3.12 -m uvicorn app.main:app --reload --port 8000 --app-dir backend\" \"npm --prefix frontend run dev -- --host 0.0.0.0\"",
+    "dev:backend": "py -3.12 -m uvicorn app.main:app --reload --port 8000 --app-dir backend",
+    "dev:frontend": "npm --prefix frontend run dev -- --host 0.0.0.0",
+    "build:frontend": "npm --prefix frontend run build",
+    "test:backend": "py -3.12 -m pytest --tb=short backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
