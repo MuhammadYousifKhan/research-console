@@ -1,6 +1,7 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react'
 
 import type {
+  CitationsResponse,
   CreateResearchRequest,
   ResearchHistoryResponse,
   ResearchRun,
@@ -29,6 +30,10 @@ export const researchApi = createApi({
       query: (id) => `/research/${id}`,
       providesTags: (_result, _error, id) => [{ type: 'Run', id }],
     }),
+    getCitations: builder.query<CitationsResponse, number>({
+      query: (id) => `/research/${id}/citations`,
+      providesTags: (_result, _error, id) => [{ type: 'Run', id }],
+    }),
     createResearch: builder.mutation<ResearchRun, CreateResearchRequest>({
       query: (body) => ({
         url: '/research',
@@ -45,5 +50,6 @@ export const {
   useGetHistoryQuery,
   useGetRunQuery,
   useLazyGetRunQuery,
+  useGetCitationsQuery,
   useCreateResearchMutation,
 } = researchApi

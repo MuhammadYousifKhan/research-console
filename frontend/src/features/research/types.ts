@@ -66,3 +66,18 @@ export type CreateResearchRequest = {
   query: string
   max_tasks: number
 }
+
+export type CitationStyle = 'apa' | 'mla' | 'ieee' | 'harvard' | 'chicago' | 'bibtex'
+
+export type CitationItem = {
+  citation_id: number | null
+  title: string
+  url: string
+  text: string
+}
+
+export type CitationsResponse = {
+  research_id: number
+  accessed: string
+  styles: Record<CitationStyle, CitationItem[]>
+}

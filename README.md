@@ -34,13 +34,14 @@ A core design principle is **honest state reporting**: the console never fakes a
 - 🏷️ **Source credibility classification** — domain heuristics tag each source by type (academic, government, news, industry, organization) and reliability (high / medium / low / unknown).
 - ✍️ **Cited synthesis** — generates a structured answer using **only** the gathered evidence, with inline `[n]` citations.
 - ✅ **Support evaluation** — a dedicated evaluator checks whether the answer is supported, returns a confidence level, and lists missing evidence.
+- 📚 **Citation export** — every source rendered in **APA, MLA, IEEE, Harvard, Chicago, and BibTeX**, with per-reference and "copy all" buttons. Deterministic (no LLM); web-resource style with an accessed date.
 - 💾 **Persistence & history** — every run is stored (SQLite) and browsable from the dashboard.
 - 🔁 **Failure isolation** — a single tool or LLM failure degrades only that stage; the run always returns a partial, honestly-labeled result.
 - 🤖 **Dual LLM support** — works with any **OpenAI-compatible** API **or** **Google Gemini** (currently configured for Gemini 2.5 Flash).
 - 🎨 **Responsive dashboard** — the "Instrument" dark theme with a numbered pipeline, metric cards, source grid, and honest empty/error/loading states.
 
 ### Planned (see [Roadmap](#-roadmap--future-implementations))
-Academic source APIs (arXiv, Semantic Scholar, PubMed), RAG + vector DB, document intelligence (PDF/DOCX), citation export (APA/MLA/IEEE/BibTeX), multi-agent orchestration, workspaces, collaboration, analytics, and more.
+Academic source APIs (arXiv, Semantic Scholar, PubMed), RAG + vector DB, document intelligence (PDF/DOCX), report export (PDF/DOCX bundle), multi-agent orchestration, workspaces, collaboration, analytics, and more.
 
 ---
 
@@ -178,6 +179,7 @@ Base URL (dev): `http://127.0.0.1:8000` · Interactive docs: `http://127.0.0.1:8
 | `POST` | `/research` | Run the full pipeline; persists and returns the complete result |
 | `GET` | `/research?limit=N` | List recent run summaries (newest first, limit 1–100) |
 | `GET` | `/research/{id}` | Fetch one full run (`404` if not found) |
+| `GET` | `/research/{id}/citations` | Citations for the run's sources in all 6 styles + accessed date (`404` if not found) |
 
 <details>
 <summary><strong>Example — <code>POST /research</code></strong></summary>
@@ -338,7 +340,7 @@ The full, phased roadmap (with dependencies and a recommended build order) lives
 | Phase | Theme | Status |
 |---|---|---|
 | 1 | **Research Intelligence** — arXiv, Semantic Scholar, PubMed, GitHub, semantic search, query expansion | 🟡 Next |
-| 2 | **Multi-Agent Architecture** — Analysis, Citation & Reviewer agents; LangGraph orchestration | 🟢 Started |
+| 2 | **Multi-Agent Architecture** — Analysis & Reviewer agents; LangGraph orchestration (Citation export ✅ done) | 🟢 Started |
 | 3 | **RAG** — chunking, embeddings, vector DB (Chroma/Qdrant/Pinecone), hybrid retrieval | 🟡 Next |
 | 4 | **Document Intelligence** — PDF/DOCX upload, OCR, table/figure/citation extraction, doc chat | ⚪ Later |
 | 5 | **Research Workspace** — projects, folders, tags, collections, notes | ⚪ Later |

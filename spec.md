@@ -118,7 +118,7 @@ All "agents" are thin classes wrapping prompt + parse logic over a shared `LLMCl
 | **Synthesizer** | `synthesizer.py` | Write a structured, cited answer (`Summary`, `Key impacts`, `Risks and limitations`, `Sources used`) using **only** provided evidence + numbered citation context. | Transparent placeholder answer on LLM failure |
 | **Evaluator** | `evaluator.py` | Return strict JSON: `is_supported`, `confidence`, `missing_evidence[]`, `notes`. | `fallback_evaluation()` — infers support from evidence presence |
 
-> **Note:** This is a hand-rolled sequential multi-agent setup (no LangChain/LangGraph/CrewAI). There is currently **no** dedicated Analysis, Citation, or Reviewer agent.
+> **Note:** This is a hand-rolled sequential multi-agent setup (no LangChain/LangGraph/CrewAI). Citation **export** now exists as a deterministic (no-LLM) formatter — see `CitationFormatter` in §6, not an LLM agent. There is still **no** dedicated Analysis or Reviewer agent.
 
 ---
 
@@ -142,6 +142,7 @@ The planner may only emit these two tool names (enforced by the `ResearchTask.to
 | **LLMClient** | `services/llm.py` | Unified async LLM client. `complete_text()` and `complete_json()` (strips code fences, parses JSON). Dual OpenAI-compatible / Gemini support. Rich `LLMError` messages (HTTP status + body excerpt). `temperature=0.2`, 45s timeout. |
 | **ResearchCleanupService** | `services/research_cleanup.py` | Text normalization (strips markdown/URLs/cookie noise), URL-based dedup, citation numbering, and **domain-heuristic source classification** → `(source_type, reliability)`. Builds the numbered `citation_context` string for the synthesizer. |
 | **ResearchMemory** | `memory/research_memory.py` | In-memory, **per-request** store of observations + unique sources. Not persisted across runs. |
+| **CitationFormatter** | `services/citations.py` | Deterministic (no-LLM) reference formatter. Renders each `Source` as **APA / MLA / IEEE / Harvard / Chicago / BibTeX**. Since sources carry no author/date, references are *web-resource* style: site name = URL host, date = `n.d.`, plus an **accessed date** (today). Backs the `GET /research/{id}/citations` endpoint. |
 
 ### Source classification (heuristic)
 `classify_source()` maps a domain to `(type, reliability)` via allowlists:
@@ -170,6 +171,8 @@ The planner may only emit these two tool names (enforced by the `ResearchTask.to
 | `ResearchResponse` | `research_id?`, `query`, `plan[]`, `steps[]`, `sources[]`, `observations[]`, `answer`, `evaluation` |
 | `ResearchRunSummary` | `research_id`, `query`, `created_at` |
 | `ResearchRunListResponse` | `items: ResearchRunSummary[]` |
+| `CitationItem` | `citation_id?`, `title`, `url`, `text` (the formatted reference) |
+| `CitationsResponse` | `research_id`, `accessed` (ISO date), `styles: { apa\|mla\|ieee\|harvard\|chicago\|bibtex → CitationItem[] }` |
 
 ### 7.2 Database ([`models/research_run.py`](backend/app/models/research_run.py))
 
@@ -199,6 +202,7 @@ Base URL (dev): `http://127.0.0.1:8000`. CORS origins from `CORS_ALLOW_ORIGINS` 
 | `POST` | `/research` | Run the full pipeline for `{ query, max_tasks }`; persists and returns the complete `ResearchResponse`. |
 | `GET` | `/research?limit=N` | List recent run summaries (limit clamped 1–100, default 20), newest first. |
 | `GET` | `/research/{id}` | Fetch one full run; `404` if not found. |
+| `GET` | `/research/{id}/citations` | Return the run's sources formatted in **all six citation styles** (APA/MLA/IEEE/Harvard/Chicago/BibTeX) plus the accessed date; `404` if not found. |
 
 ### Example — `POST /research`
 ```json
@@ -238,7 +242,8 @@ Research-Console/
 │   │   │   └── scrape_page.py      # URL → readable text
 │   │   ├── services/
 │   │   │   ├── llm.py              # OpenAI/Gemini client
-│   │   │   └── research_cleanup.py # dedupe, classify, cite
+│   │   │   ├── research_cleanup.py # dedupe, classify, cite
+│   │   │   └── citations.py        # APA/MLA/IEEE/Harvard/Chicago/BibTeX formatter
 │   │   ├── memory/
 │   │   │   └── research_memory.py  # per-run in-memory store
 │   │   ├── schemas/
@@ -303,6 +308,7 @@ Research-Console/
 | `Timeline` | Vertical numbered **pipeline** with status dots/pills |
 | `AnswerCard` | Synthesized answer (heading/paragraph blocks) + evaluation box |
 | `SourcesGrid` | Source cards (citation, reliability pill, host, snippet) |
+| `CitationsCard` | Citation export panel — style selector (6 styles), per-reference + "copy all" buttons; fetches `GET /research/{id}/citations` |
 | `EmptyState` / `ErrorBanner` | Honest empty + failure surfaces |
 
 ---
@@ -398,13 +404,13 @@ copy .env.example .env   # then fill in OPENAI_API_KEY (+ TAVILY_API_KEY)
 
 ## 15. Current Scope & Known Limitations
 
-**Implemented:** core autonomous research loop (plan→execute→clean→synthesize→evaluate), Tavily web search + HTML scrape, domain-heuristic credibility, numbered citations, SQLite persistence + history, dual OpenAI/Gemini LLM support, responsive React dashboard with honest empty/error/loading states.
+**Implemented:** core autonomous research loop (plan→execute→clean→synthesize→evaluate), Tavily web search + HTML scrape, domain-heuristic credibility, numbered citations, citation export in 6 styles (APA/MLA/IEEE/Harvard/Chicago/BibTeX), SQLite persistence + history, dual OpenAI/Gemini LLM support, responsive React dashboard with honest empty/error/loading states.
 
 **Not yet implemented (notable gaps):**
 - No academic source APIs (arXiv, Semantic Scholar, PubMed), GitHub, or data portals — web search only.
 - No RAG / vector DB — evidence is concatenated into the prompt.
 - No document intelligence (PDF/DOCX upload, OCR, tables/figures).
-- No citation styles (APA/MLA/IEEE/BibTeX) or report export.
+- Citation **styles** (APA/MLA/IEEE/Harvard/Chicago/BibTeX) are implemented; full **report export** (PDF/DOCX/Markdown bundle) is not.
 - No workspace (projects/folders/tags), auth, collaboration, or cross-run memory.
 - No streaming progress (run is request/response; UI waits for completion).
 - Executor runs tasks **sequentially** (no parallelism).
@@ -429,7 +435,7 @@ The following roadmap outlines the planned evolution of the Research Console fro
 |---|---|---|---|---|
 | 1 | Parallelize executor (`asyncio.gather`) + retry/backoff | 9 | Cheap, immediate latency win; executor is sequential today | — |
 | 2 | Academic search tools (arXiv, Semantic Scholar — free, no key) | 1 | Biggest research-quality jump; plugs into the existing tool registry | — |
-| 3 | Citation Agent + export (APA/MLA/IEEE/BibTeX) | 2 | High perceived value, cheap; `Source` objects already structured | — |
+| 3 | ~~Citation Agent + export (APA/MLA/IEEE/BibTeX)~~ ✅ **done** — `CitationFormatter` + `GET /research/{id}/citations` + UI export panel (6 styles) | 2 | High perceived value, cheap; `Source` objects already structured | — |
 | 4 | RAG pipeline + vector DB (Chroma) | 3 | Unlocks document chat, analysis, scale; foundational | tools (1–2) |
 | 5 | Streaming progress (SSE/WebSocket) | 9 | Replaces request/response wait with live pipeline | — |
 | 6 | Document intelligence (PDF via PyMuPDF) | 4 | Core "researcher" use case | RAG (4) |
@@ -509,14 +515,18 @@ Introduce specialized autonomous agents. **Four of these already exist in a basi
 * Detect misinformation
 * Confidence scoring
 
-#### Citation Agent  `[new]`
+#### Citation Agent  `[done — services/citations.py]`
 
-* Generate APA citations
-* MLA
-* IEEE
-* Harvard
-* Chicago
-* BibTeX
+Implemented as a deterministic (no-LLM) `CitationFormatter`, exposed at `GET /research/{id}/citations` and a frontend export panel. All six styles ship today:
+
+* Generate APA citations ✅
+* MLA ✅
+* IEEE ✅
+* Harvard ✅
+* Chicago ✅
+* BibTeX ✅
+
+> Limitation: sources carry no author/date, so references are web-resource style (site name from host, `n.d.`, accessed date). Author/date enrichment depends on Phase 1 academic-metadata tools (CrossRef/Semantic Scholar).
 
 #### Writer Agent  `[exists — synthesizer.py, single-format]`
 
@@ -750,6 +760,7 @@ Frontend
 * Source reliability classification
 * LLM synthesis
 * Research evaluation
+* Citation export (APA / MLA / IEEE / Harvard / Chicago / BibTeX)
 * SQLite persistence
 * Research history
 * Responsive dashboard
@@ -774,7 +785,6 @@ Frontend
 * RAG pipeline
 * PDF processing
 * Multi-agent workflow
-* Citation export
 * Report export
 * Authentication
 * Project workspaces

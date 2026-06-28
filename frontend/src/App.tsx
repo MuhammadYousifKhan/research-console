@@ -10,9 +10,7 @@ function App() {
       <Header />
       <main className="content-grid">
         <Sidebar />
-        <section className="right-column">
-          <ResearchWorkspace />
-        </section>
+        <ResearchWorkspace />
       </main>
       <Footer />
     </div>

@@ -3,11 +3,12 @@ import { hostFromUrl } from '../../utils/format'
 
 type SourcesGridProps = {
   sources: Source[]
+  className?: string
 }
 
-function SourcesGrid({ sources }: SourcesGridProps) {
+function SourcesGrid({ sources, className = '' }: SourcesGridProps) {
   return (
-    <section>
+    <section className={className}>
       <div className="sources-head">
         <span className="label">Sources</span>
         <span className="count">{sources.length}</span>

@@ -1,9 +1,62 @@
+import { Fragment, type ReactNode } from 'react'
+
 import type { Evaluation } from '../../features/research/types'
+import type { AnswerBlock, InlineSpan } from '../../utils/format'
 import { confidenceLabel, parseAnswerBlocks } from '../../utils/format'
 
 type AnswerCardProps = {
   answer: string
   evaluation: Evaluation
+}
+
+function renderSpans(spans: InlineSpan[]) {
+  return spans.map((span, index) =>
+    span.bold ? (
+      <strong key={index}>{span.text}</strong>
+    ) : (
+      <Fragment key={index}>{span.text}</Fragment>
+    ),
+  )
+}
+
+/** Group the flat block list so consecutive list items render inside one <ul>. */
+function renderBlocks(blocks: AnswerBlock[]) {
+  const out: ReactNode[] = []
+  let bullets: AnswerBlock[] = []
+
+  const flushBullets = () => {
+    if (bullets.length === 0) return
+    out.push(
+      <ul key={`ul-${out.length}`} className="answer-list">
+        {bullets.map((item, index) => (
+          <li key={index}>{renderSpans(item.spans)}</li>
+        ))}
+      </ul>,
+    )
+    bullets = []
+  }
+
+  blocks.forEach((block) => {
+    if (block.kind === 'li') {
+      bullets.push(block)
+      return
+    }
+    flushBullets()
+    if (block.kind === 'h') {
+      const key = `h-${out.length}`
+      out.push(
+        block.level === 2 ? (
+          <h3 key={key}>{renderSpans(block.spans)}</h3>
+        ) : (
+          <h4 key={key}>{renderSpans(block.spans)}</h4>
+        ),
+      )
+    } else {
+      out.push(<p key={`p-${out.length}`}>{renderSpans(block.spans)}</p>)
+    }
+  })
+  flushBullets()
+  return out
 }
 
 function AnswerCard({ answer, evaluation }: AnswerCardProps) {
@@ -21,13 +74,7 @@ function AnswerCard({ answer, evaluation }: AnswerCardProps) {
 
       <div className="answer-text">
         {blocks.length > 0 ? (
-          blocks.map((block, index) =>
-            block.kind === 'h' ? (
-              <h4 key={`blk-${index}`}>{block.text}</h4>
-            ) : (
-              <p key={`blk-${index}`}>{block.text}</p>
-            ),
-          )
+          renderBlocks(blocks)
         ) : (
           <p className="muted">No answer text was produced.</p>
         )}

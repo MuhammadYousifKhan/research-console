@@ -24,26 +24,73 @@ export function hostFromUrl(url: string): string {
   }
 }
 
-export type AnswerBlock = { kind: 'h' | 'p'; text: string }
+export type InlineSpan = { text: string; bold: boolean }
+
+export type AnswerBlock =
+  | { kind: 'h'; level: 2 | 3; spans: InlineSpan[] }
+  | { kind: 'p'; spans: InlineSpan[] }
+  | { kind: 'li'; spans: InlineSpan[] }
+
+/** Parse `**bold**` markup into styled inline spans. */
+export function parseInline(text: string): InlineSpan[] {
+  const spans: InlineSpan[] = []
+  const regex = /\*\*(.+?)\*\*/g
+  let last = 0
+  let match: RegExpExecArray | null
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > last) {
+      spans.push({ text: text.slice(last, match.index), bold: false })
+    }
+    spans.push({ text: match[1], bold: true })
+    last = match.index + match[0].length
+  }
+  if (last < text.length) {
+    spans.push({ text: text.slice(last), bold: false })
+  }
+  return spans.length > 0 ? spans : [{ text, bold: false }]
+}
 
 /**
- * Split a synthesized answer into heading/paragraph blocks.
- * Lines starting with `## ` become headings; everything else is a paragraph.
- * Falls back to single-newline splitting when the text has no blank lines.
+ * Split a synthesized answer into heading / paragraph / list blocks.
+ * Handles `#`–`######` headings, `*`/`-`/`•` bullets, and inline `**bold**`.
+ * The text is normalized first so headings and bullets that the model emitted
+ * inline (collapsed onto one line) are broken back onto their own lines.
  */
 export function parseAnswerBlocks(answer: string): AnswerBlock[] {
   if (!answer.trim()) return []
-  const chunks = answer.includes('\n\n') ? answer.split('\n\n') : answer.split('\n')
-  return chunks
-    .map((raw) => raw.trim())
-    .filter((raw) => raw.length > 0)
-    .map((raw) => {
-      const isHeading = raw.startsWith('## ') || raw.startsWith('# ')
-      return {
-        kind: isHeading ? 'h' : 'p',
-        text: isHeading ? raw.replace(/^#{1,2}\s+/, '') : raw,
-      } as AnswerBlock
-    })
+
+  const normalized = answer
+    .replace(/\r/g, '')
+    // Break inline bullets ("… text * next item") onto their own lines.
+    // A single `*` surrounded by spaces is a bullet; `**bold**` has no inner space.
+    .replace(/\s\*\s+(?=\S)/g, '\n* ')
+    // Push headings that follow other text onto a new line.
+    .replace(/([^\n])\s*(#{1,6}\s+)/g, '$1\n$2')
+
+  const blocks: AnswerBlock[] = []
+  for (const raw of normalized.split('\n')) {
+    const line = raw.trim()
+    if (!line) continue
+
+    const heading = line.match(/^(#{1,6})\s+(.*)$/)
+    if (heading) {
+      blocks.push({
+        kind: 'h',
+        level: heading[1].length <= 2 ? 2 : 3,
+        spans: parseInline(heading[2].trim()),
+      })
+      continue
+    }
+
+    const bullet = line.match(/^[*\-•]\s+(.*)$/)
+    if (bullet) {
+      blocks.push({ kind: 'li', spans: parseInline(bullet[1].trim()) })
+      continue
+    }
+
+    blocks.push({ kind: 'p', spans: parseInline(line) })
+  }
+  return blocks
 }
 
 export function getErrorMessage(error: unknown, fallback: string): string {

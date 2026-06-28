@@ -1,6 +1,7 @@
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import { closeSidebar } from '../../features/research/researchSlice'
 import HistoryList from '../research/HistoryList'
+import PipelineCard from '../research/PipelineCard'
 import ResearchForm from '../research/ResearchForm'
 
 function Sidebar() {
@@ -27,6 +28,7 @@ function Sidebar() {
           </button>
         </div>
         <ResearchForm />
+        <PipelineCard />
         <HistoryList />
       </aside>
     </>

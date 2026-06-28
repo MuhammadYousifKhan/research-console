@@ -13,6 +13,7 @@ from app.core.database import Base, engine, get_db
 from app.memory.research_memory import ResearchMemory
 from app.models.research_run import ResearchRun
 from app.schemas.research import (
+    CitationsResponse,
     Evaluation,
     ExecutionStep,
     Observation,
@@ -23,6 +24,7 @@ from app.schemas.research import (
     ResearchTask,
     Source,
 )
+from app.services.citations import CitationFormatter
 from app.services.llm import LLMClient, LLMError
 from app.services.research_cleanup import ResearchCleanupService
 from app.tools.scrape_page import ScrapePageTool
@@ -219,3 +221,18 @@ def get_research_run(research_id: int, db: Session = Depends(get_db)) -> Researc
     if run is None:
         raise HTTPException(status_code=404, detail="Research run not found")
     return _to_research_response(run)
+
+
+@app.get("/research/{research_id}/citations", response_model=CitationsResponse)
+def get_research_citations(research_id: int, db: Session = Depends(get_db)) -> CitationsResponse:
+    run = db.query(ResearchRun).filter(ResearchRun.id == research_id).first()
+    if run is None:
+        raise HTTPException(status_code=404, detail="Research run not found")
+
+    sources = [Source.model_validate(item) for item in run.sources]
+    formatter = CitationFormatter()
+    return CitationsResponse(
+        research_id=run.id,
+        accessed=formatter.accessed.isoformat(),
+        styles=formatter.format_all(sources),
+    )

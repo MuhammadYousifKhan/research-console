@@ -71,3 +71,19 @@ class ResearchRunSummary(BaseModel):
 
 class ResearchRunListResponse(BaseModel):
     items: list[ResearchRunSummary]
+
+
+CitationStyle = Literal["apa", "mla", "ieee", "harvard", "chicago", "bibtex"]
+
+
+class CitationItem(BaseModel):
+    citation_id: int | None = None
+    title: str
+    url: str = ""
+    text: str
+
+
+class CitationsResponse(BaseModel):
+    research_id: int
+    accessed: str
+    styles: dict[CitationStyle, list[CitationItem]]
