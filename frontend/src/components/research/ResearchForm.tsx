@@ -28,9 +28,9 @@ function ResearchForm() {
 
   return (
     <section className="card form-card">
-      <h2>Start New Research</h2>
+      <div className="card-eyebrow">New run</div>
       <form onSubmit={onSubmit}>
-        <label htmlFor="query">Research query</label>
+        <label htmlFor="query">Research question</label>
         <textarea
           id="query"
           value={query}
@@ -41,19 +41,22 @@ function ResearchForm() {
           placeholder="What should the agent research?"
         />
 
-        <label htmlFor="tasks">Max tasks</label>
-        <input
-          id="tasks"
-          type="number"
-          min={1}
-          max={8}
-          value={maxTasks}
-          onChange={(event) => setMaxTasks(Number(event.target.value))}
-        />
-
-        <button type="submit" disabled={isLoading}>
-          {isLoading ? 'Running Research…' : 'Run Research'}
-        </button>
+        <div className="form-row">
+          <div className="field-max">
+            <label htmlFor="tasks">Max tasks</label>
+            <input
+              id="tasks"
+              type="number"
+              min={1}
+              max={8}
+              value={maxTasks}
+              onChange={(event) => setMaxTasks(Number(event.target.value))}
+            />
+          </div>
+          <button type="submit" disabled={isLoading}>
+            {isLoading ? 'Running…' : 'Run research →'}
+          </button>
+        </div>
 
         {error ? (
           <p className="form-error">{getErrorMessage(error, 'Research request failed.')}</p>

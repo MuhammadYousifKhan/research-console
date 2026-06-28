@@ -5,10 +5,10 @@ function Footer() {
     <footer className="app-footer">
       <div className="footer-inner">
         <div className="footer-brand">
-          <strong>Research Console</strong>
-          <span className="muted">Planning · Tools · Cleanup · Synthesis · Evaluation</span>
+          <span className="dot" aria-hidden="true" />
+          <span>Research Console</span>
         </div>
-        <p className="footer-copy muted">© {year} Autonomous Research AI Agent</p>
+        <p className="footer-copy">© {year} · Autonomous Research Agent</p>
       </div>
     </footer>
   )

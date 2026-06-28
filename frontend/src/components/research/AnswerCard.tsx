@@ -1,5 +1,5 @@
 import type { Evaluation } from '../../features/research/types'
-import { confidenceLabel } from '../../utils/format'
+import { confidenceLabel, parseAnswerBlocks } from '../../utils/format'
 
 type AnswerCardProps = {
   answer: string
@@ -7,47 +7,59 @@ type AnswerCardProps = {
 }
 
 function AnswerCard({ answer, evaluation }: AnswerCardProps) {
-  const paragraphs = answer.split('\n').filter((line) => line.trim().length > 0)
+  const blocks = parseAnswerBlocks(answer)
+  const supported = evaluation.is_supported
 
   return (
-    <section className="card answer-card">
+    <div className="answer-card">
       <div className="answer-head">
-        <h2>Final Answer</h2>
+        <div className="answer-eyebrow">Synthesized answer</div>
         <span className={`confidence confidence-${evaluation.confidence}`}>
           {confidenceLabel(evaluation.confidence)}
         </span>
       </div>
 
       <div className="answer-text">
-        {paragraphs.length > 0 ? (
-          paragraphs.map((line, index) => <p key={`answer-${index}`}>{line}</p>)
+        {blocks.length > 0 ? (
+          blocks.map((block, index) =>
+            block.kind === 'h' ? (
+              <h4 key={`blk-${index}`}>{block.text}</h4>
+            ) : (
+              <p key={`blk-${index}`}>{block.text}</p>
+            ),
+          )
         ) : (
           <p className="muted">No answer text was produced.</p>
         )}
       </div>
 
-      <div className="evaluation-box">
-        <p>
-          <strong>Supported by evidence:</strong>{' '}
-          <span className={evaluation.is_supported ? 'tag-yes' : 'tag-no'}>
-            {evaluation.is_supported ? 'Yes' : 'No'}
+      <div className={`evaluation-box ${supported ? 'supported' : 'unsupported'}`}>
+        <div className="eval-pills">
+          <span className={`status-pill support-pill ${supported ? 'yes' : 'no'}`}>
+            {supported ? 'Supported by evidence' : 'Not fully supported'}
           </span>
-        </p>
-        {evaluation.notes ? <p className="muted">{evaluation.notes}</p> : null}
+          <span className={`confidence confidence-${evaluation.confidence}`}>
+            {confidenceLabel(evaluation.confidence)}
+          </span>
+        </div>
+
+        {evaluation.notes ? <p className="eval-notes">{evaluation.notes}</p> : null}
+
         {evaluation.missing_evidence.length > 0 ? (
           <>
-            <p>
-              <strong>Missing evidence:</strong>
-            </p>
-            <ul>
+            <div className="eval-missing-title">Missing evidence</div>
+            <div className="eval-missing">
               {evaluation.missing_evidence.map((item, index) => (
-                <li key={`missing-${index}`}>{item}</li>
+                <div className="eval-missing-item" key={`missing-${index}`}>
+                  <span className="dash">—</span>
+                  <span>{item}</span>
+                </div>
               ))}
-            </ul>
+            </div>
           </>
         ) : null}
       </div>
-    </section>
+    </div>
   )
 }
 

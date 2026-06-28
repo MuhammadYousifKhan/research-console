@@ -1,19 +1,44 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Serif:wght@500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 :root {
-  --bg-1: #0d2027;
-  --bg-2: #0f2930;
-  --panel: rgba(10, 29, 36, 0.78);
-  --line-soft: rgba(117, 175, 168, 0.26);
-  --text-strong: #f0f6f6;
-  --text-soft: #bdd2d0;
-  --text-muted: #88a6a1;
-  --accent-cool: #37c0a5;
-  --accent-warm: #f5a459;
+  /* ---- Instrument theme (dark / amber) ---- */
+  --page: #0b0c0d;
+  --shell: #131517;
+  --panel: #181a1d;
+  --panel2: #1f2226;
 
-  font-family: 'Space Grotesk', 'Segoe UI', sans-serif;
-  line-height: 1.45;
-  color: var(--text-strong);
+  --line: rgba(255, 255, 255, 0.09);
+  --line-strong: rgba(255, 255, 255, 0.16);
+
+  --text-strong: #f2f1ec;
+  --text: #c6c8c8;
+  --muted: #7e8488;
+
+  --accent: #e8a13c;
+  --accent-text: #0b0c0d;
+
+  --ok: #5ec98a;
+  --fail: #e8593f;
+  --med: #e8a13c;
+  --unknown: #7e8488;
+
+  /* RGB channels for rgba() tints (avoids color-mix for wider browser support) */
+  --accent-rgb: 232, 161, 60;
+  --ok-rgb: 94, 201, 138;
+  --fail-rgb: 232, 89, 63;
+  --med-rgb: 232, 161, 60;
+  --muted-rgb: 126, 132, 136;
+
+  --sans: 'Geist', system-ui, -apple-system, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --head: 'Geist', system-ui, sans-serif;
+
+  --radius: 11px;
+  --shell-radius: 16px;
+
+  font-family: var(--sans);
+  line-height: 1.5;
+  color: var(--text);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -27,10 +52,11 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 8% 12%, rgba(245, 164, 89, 0.12), transparent 45%),
-    radial-gradient(circle at 92% 82%, rgba(55, 192, 165, 0.16), transparent 42%),
-    linear-gradient(140deg, var(--bg-1), var(--bg-2));
+  background: var(--page);
+  background-image:
+    radial-gradient(900px 500px at 14% -12%, rgba(232, 161, 60, 0.08), transparent 60%),
+    radial-gradient(720px 600px at 102% -4%, rgba(94, 201, 138, 0.05), transparent 55%);
+  background-attachment: fixed;
 }
 
 #root {
@@ -39,7 +65,40 @@ body {
 
 h1,
 h2,
-h3 {
-  font-family: 'IBM Plex Serif', Georgia, serif;
+h3,
+h4 {
+  font-family: var(--head);
   color: var(--text-strong);
+  letter-spacing: -0.01em;
+}
+
+::selection {
+  background: rgba(232, 161, 60, 0.32);
+}
+
+@keyframes scPulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.6);
+  }
+}
+
+@keyframes scSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes scShimmer {
+  0% {
+    background-position: -280px 0;
+  }
+  100% {
+    background-position: 280px 0;
+  }
 }

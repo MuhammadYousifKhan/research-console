@@ -29,9 +29,11 @@ function ResearchWorkspace() {
   return (
     <div className={`workspace ${isFetching ? 'is-refreshing' : ''}`}>
       <RunOverview run={run} />
-      <Timeline steps={run.steps} />
+      <div className="inst-grid">
+        <Timeline steps={run.steps} />
+        <AnswerCard answer={run.answer} evaluation={run.evaluation} />
+      </div>
       <SourcesGrid sources={run.sources} />
-      <AnswerCard answer={run.answer} evaluation={run.evaluation} />
     </div>
   )
 }

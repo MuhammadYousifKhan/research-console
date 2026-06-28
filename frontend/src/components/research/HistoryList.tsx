@@ -28,9 +28,16 @@ function HistoryList() {
   return (
     <section className="card history-card">
       <div className="section-title-row">
-        <h2>Research History</h2>
-        <button type="button" className="ghost" onClick={() => void refetch()} disabled={isFetching}>
-          {isFetching ? 'Refreshing…' : 'Refresh'}
+        <div className="card-eyebrow muted-eyebrow">History</div>
+        <button
+          type="button"
+          className="ghost icon-refresh"
+          onClick={() => void refetch()}
+          disabled={isFetching}
+          title="Refresh"
+          aria-label="Refresh history"
+        >
+          ↻
         </button>
       </div>
 
@@ -48,10 +55,14 @@ function HistoryList() {
               onClick={() => onSelect(item.research_id)}
               className={selectedRunId === item.research_id ? 'active' : ''}
             >
-              <strong>{item.query}</strong>
+              <span className="history-row">
+                <span className="dot completed" aria-hidden="true" />
+                <strong>{item.query}</strong>
+              </span>
               <span className="history-meta">
+                <span>{formatDateTime(item.created_at)}</span>
+                <span className="sep">·</span>
                 <span>#{item.research_id}</span>
-                <time>{formatDateTime(item.created_at)}</time>
               </span>
             </button>
           </li>

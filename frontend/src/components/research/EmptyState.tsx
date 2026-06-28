@@ -4,14 +4,17 @@ type EmptyStateProps = {
 
 function EmptyState({ isLoading }: EmptyStateProps) {
   return (
-    <section className="card empty-state">
-      <h2>{isLoading ? 'Loading research…' : 'No Active Research'}</h2>
+    <div className="empty-state">
+      <div className="glyph" aria-hidden="true">
+        ?
+      </div>
+      <h2>{isLoading ? 'Loading research…' : 'No run selected'}</h2>
       <p>
         {isLoading
           ? 'Fetching the latest run from the server.'
-          : 'Start a research run from the panel. You will see task steps, cleaned sources, the synthesized answer, and support evaluation here.'}
+          : 'Submit a research question on the left, or open a past run from history.'}
       </p>
-    </section>
+    </div>
   )
 }
 
