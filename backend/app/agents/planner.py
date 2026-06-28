@@ -32,7 +32,17 @@ class ResearchPlanner:
         data = await self.llm.complete_json(
             system=(
                 "You are a research planning agent. Return strict JSON only. "
-                "Create concise tool-ready research tasks."
+                "Create concise tool-ready research tasks.\n"
+                "Available tools:\n"
+                "- search_web: general web search (use for current events, news, "
+                "products, opinions, broad context).\n"
+                "- search_arxiv: search arXiv preprints (use for physics, math, CS, "
+                "and other technical/scientific topics).\n"
+                "- search_scholar: search Semantic Scholar (use for peer-reviewed "
+                "academic papers across all disciplines).\n"
+                "- scrape_page: fetch a specific URL (input must be a full URL).\n"
+                "Prefer search_arxiv and search_scholar for scientific or technical "
+                "questions; use search_web for everything else."
             ),
             user=(
                 f"Query: {query}\n"

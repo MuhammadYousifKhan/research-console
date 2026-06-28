@@ -30,6 +30,8 @@ A core design principle is **honest state reporting**: the console never fakes a
 ### Implemented today
 - 🧠 **Autonomous research planning** — decomposes a query into prioritized, tool-ready tasks (with a heuristic fallback if the LLM fails).
 - 🔎 **Live web search** via [Tavily](https://tavily.com) + **HTML scraping** of arbitrary URLs.
+- 🎓 **Academic search** — free, key-less [arXiv](https://arxiv.org) and [Semantic Scholar](https://www.semanticscholar.org) tools; the planner routes scientific/technical queries to them and tags results as high-reliability academic sources (authors + year + abstract).
+- ⚡ **Parallel tool execution** — all of a plan's tool calls run concurrently (`asyncio.gather`), preserving order; one failure never aborts the run.
 - 🧹 **Evidence cleanup** — text normalization, URL-based deduplication, and numbered citation assignment.
 - 🏷️ **Source credibility classification** — domain heuristics tag each source by type (academic, government, news, industry, organization) and reliability (high / medium / low / unknown).
 - ✍️ **Cited synthesis** — generates a structured answer using **only** the gathered evidence, with inline `[n]` citations.
@@ -41,7 +43,7 @@ A core design principle is **honest state reporting**: the console never fakes a
 - 🎨 **Responsive dashboard** — the "Instrument" dark theme with a numbered pipeline, metric cards, source grid, and honest empty/error/loading states.
 
 ### Planned (see [Roadmap](#-roadmap--future-implementations))
-Academic source APIs (arXiv, Semantic Scholar, PubMed), RAG + vector DB, document intelligence (PDF/DOCX), report export (PDF/DOCX bundle), multi-agent orchestration, workspaces, collaboration, analytics, and more.
+More academic source APIs (PubMed, CrossRef, Google Scholar), citation author/date enrichment, RAG + vector DB, document intelligence (PDF/DOCX), report export (PDF/DOCX bundle), multi-agent orchestration, workspaces, collaboration, analytics, and more.
 
 ---
 
@@ -102,6 +104,7 @@ The pipeline is **linear and sequential**, producing one named `ExecutionStep` p
 |---|---|---|
 | LLM API (OpenAI-compatible **or** Google Gemini) | Planning, synthesis, evaluation | ✅ Yes |
 | Tavily | Live web search | ⛅ Optional (degrades gracefully) |
+| arXiv / Semantic Scholar | Academic paper search | 🆓 No key required |
 
 ---
 
@@ -117,9 +120,11 @@ The pipeline is **linear and sequential**, producing one named `ExecutionStep` p
 
 **Tools** (in `backend/app/tools/`):
 - `search_web` — Tavily search (basic depth, 5 results); returns a "not configured" notice if `TAVILY_API_KEY` is missing.
+- `search_arxiv` — free, key-less arXiv Atom API (5 results); high-reliability academic sources.
+- `search_scholar` — free, key-less Semantic Scholar Graph API (5 results); reports HTTP 429 rate-limiting honestly.
 - `scrape_page` — fetches a URL, parses with BeautifulSoup, extracts readable `<p>` text (capped at 3000 chars).
 
-> This is a hand-rolled sequential multi-agent setup (no LangChain/LangGraph yet). The [roadmap](#-roadmap--future-implementations) extends it into parallel, RAG-backed, specialized agents.
+> This is a hand-rolled multi-agent setup (no LangChain/LangGraph yet) whose executor runs tool calls in parallel. The [roadmap](#-roadmap--future-implementations) extends it into RAG-backed, specialized agents.
 
 ---
 
@@ -136,6 +141,8 @@ Research-Console/
 │   │   │   └── evaluator.py        # answer → support evaluation
 │   │   ├── tools/
 │   │   │   ├── search_web.py       # Tavily web search
+│   │   │   ├── search_arxiv.py     # arXiv preprint search (Atom/XML)
+│   │   │   ├── search_scholar.py   # Semantic Scholar search (JSON)
 │   │   │   └── scrape_page.py      # URL → readable text
 │   │   ├── services/
 │   │   │   ├── llm.py              # OpenAI/Gemini client
@@ -339,7 +346,7 @@ The full, phased roadmap (with dependencies and a recommended build order) lives
 
 | Phase | Theme | Status |
 |---|---|---|
-| 1 | **Research Intelligence** — arXiv, Semantic Scholar, PubMed, GitHub, semantic search, query expansion | 🟡 Next |
+| 1 | **Research Intelligence** — arXiv ✅, Semantic Scholar ✅; next: PubMed, GitHub, semantic search, query expansion | 🟢 Started |
 | 2 | **Multi-Agent Architecture** — Analysis & Reviewer agents; LangGraph orchestration (Citation export ✅ done) | 🟢 Started |
 | 3 | **RAG** — chunking, embeddings, vector DB (Chroma/Qdrant/Pinecone), hybrid retrieval | 🟡 Next |
 | 4 | **Document Intelligence** — PDF/DOCX upload, OCR, table/figure/citation extraction, doc chat | ⚪ Later |
@@ -347,7 +354,7 @@ The full, phased roadmap (with dependencies and a recommended build order) lives
 | 6 | **Collaboration** — shared workspaces, roles, comments, live editing | ⚪ Later |
 | 7 | **Analytics & Visualization** — citation networks, knowledge graphs, timelines | ⚪ Later |
 | 8 | **AI Memory** — persistent cross-run preferences & history | ⚪ Later |
-| 9 | **Performance** — parallel/async execution, caching, streaming progress | 🟡 Next |
+| 9 | **Performance** — parallel/async execution ✅; next: caching, streaming progress | 🟢 Started |
 | 10 | **Enterprise** — auth, OAuth, multi-tenancy, billing, audit logs | ⚪ Later |
 | 11 | **Deployment** — Docker, Kubernetes, CI/CD, monitoring | ⚪ Later |
 | 12 | **AI Enhancements** — long-term memory, self-reflection, multi-modal, voice | ⚪ Later |

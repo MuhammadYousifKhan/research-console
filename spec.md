@@ -130,8 +130,10 @@ Tools live in [`backend/app/tools/`](backend/app/tools/) and are registered in a
 |---|---|---|
 | **search_web** | `search_web.py` | Calls **Tavily** `/search` (`search_depth: basic`, `max_results: 5`). Maps results → `Source[]`. Returns a "not configured" source if `TAVILY_API_KEY` is missing. |
 | **scrape_page** | `scrape_page.py` | `GET`s a URL (follows redirects), parses with BeautifulSoup, extracts `<p>` text (capped at 3000 chars) and `<title>`. |
+| **search_arxiv** | `search_arxiv.py` | Queries the free, key-less **arXiv** Atom API (`max_results: 5`), parsed with bs4's `xml` (lxml) builder. Each paper → `Source` with `source_type="academic"`, `reliability="high"`; snippet packs authors + year + abstract. Empty/failed results reported honestly. |
+| **search_scholar** | `search_scholar.py` | Queries the free, key-less **Semantic Scholar** Graph API (`limit: 5`, JSON). Maps papers → academic `Source[]` (authors + year + abstract), falling back to a DOI URL when needed. Reports HTTP 429 rate-limiting and empty results explicitly (no fabrication). |
 
-The planner may only emit these two tool names (enforced by the `ResearchTask.tool` `Literal`).
+The planner may only emit these four tool names (enforced by the `ResearchTask.tool` `Literal`). The executor runs all of a plan's tool calls **concurrently** via `asyncio.gather`, preserving task order; a single tool failure is captured as an error Observation and never aborts the run.
 
 ---
 
@@ -162,7 +164,7 @@ The planner may only emit these two tool names (enforced by the `ResearchTask.to
 | Schema | Key fields |
 |---|---|
 | `ResearchRequest` | `query` (min 3 chars), `max_tasks` (1–8, default 4) |
-| `ResearchTask` | `id`, `description`, `tool` (`search_web`\|`scrape_page`), `input`, `priority` |
+| `ResearchTask` | `id`, `description`, `tool` (`search_web`\|`scrape_page`\|`search_arxiv`\|`search_scholar`), `input`, `priority` |
 | `ResearchPlan` | `tasks: ResearchTask[]` |
 | `Source` | `citation_id?`, `title`, `url`, `snippet`, `reliability` (unknown\|low\|medium\|high), `source_type` |
 | `Observation` | `task_id`, `task`, `tool`, `result`, `sources[]`, `metadata{}` |
@@ -239,6 +241,8 @@ Research-Console/
 │   │   │   └── evaluator.py        # answer → support evaluation
 │   │   ├── tools/
 │   │   │   ├── search_web.py       # Tavily web search
+│   │   │   ├── search_arxiv.py     # arXiv preprint search (Atom/XML)
+│   │   │   ├── search_scholar.py   # Semantic Scholar search (JSON)
 │   │   │   └── scrape_page.py      # URL → readable text
 │   │   ├── services/
 │   │   │   ├── llm.py              # OpenAI/Gemini client
@@ -433,8 +437,8 @@ The following roadmap outlines the planned evolution of the Research Console fro
 
 | Order | Work item | Phase | Why first | Depends on |
 |---|---|---|---|---|
-| 1 | Parallelize executor (`asyncio.gather`) + retry/backoff | 9 | Cheap, immediate latency win; executor is sequential today | — |
-| 2 | Academic search tools (arXiv, Semantic Scholar — free, no key) | 1 | Biggest research-quality jump; plugs into the existing tool registry | — |
+| 1 | ~~Parallelize executor (`asyncio.gather`)~~ ✅ **done** — executor now fans out tool calls concurrently, preserving order; per-task failures captured. (retry/backoff still TODO) | 9 | Cheap, immediate latency win; executor was sequential | — |
+| 2 | ~~Academic search tools (arXiv, Semantic Scholar — free, no key)~~ ✅ **done** — `search_arxiv` + `search_scholar` tools registered; planner routes scientific queries to them | 1 | Biggest research-quality jump; plugs into the existing tool registry | — |
 | 3 | ~~Citation Agent + export (APA/MLA/IEEE/BibTeX)~~ ✅ **done** — `CitationFormatter` + `GET /research/{id}/citations` + UI export panel (6 styles) | 2 | High perceived value, cheap; `Source` objects already structured | — |
 | 4 | RAG pipeline + vector DB (Chroma) | 3 | Unlocks document chat, analysis, scale; foundational | tools (1–2) |
 | 5 | Streaming progress (SSE/WebSocket) | 9 | Replaces request/response wait with live pipeline | — |
@@ -444,15 +448,15 @@ The following roadmap outlines the planned evolution of the Research Console fro
 
 > **Grounding note:** The agent already implements a hand-rolled sequential version of Phases 1–2 (Planner, Search/Executor, Synthesizer/Writer, Evaluator/Verifier). The roadmap **extends** these into specialized, parallel, RAG-backed agents — it does not start from zero. See §4 and §15 for the current baseline.
 
-### Phase 1 — Research Intelligence  🟡 Next
+### Phase 1 — Research Intelligence  🟢 Started
 
-> Search today is **Tavily web-only**. This phase adds academic + specialized sources via new tools in the existing `tools/` registry (each implements `async run(task) -> Observation`). arXiv and Semantic Scholar are free and key-less — start there.
+> Search began as **Tavily web-only**. ✅ **arXiv (`search_arxiv`) and Semantic Scholar (`search_scholar`) are now live** — free, key-less academic tools in the existing `tools/` registry, each producing `source_type="academic"`, `reliability="high"` sources (authors + year + abstract in the snippet). Remaining integrations below (PubMed, CrossRef, Google Scholar, etc.) extend this.
 
 #### Advanced Search Integrations
 
 * Google Scholar integration
-* arXiv API integration
-* Semantic Scholar API
+* arXiv API integration ✅ (`search_arxiv`)
+* Semantic Scholar API ✅ (`search_scholar`)
 * PubMed support
 * IEEE Xplore support
 * ACM Digital Library support
@@ -497,8 +501,8 @@ Introduce specialized autonomous agents. **Four of these already exist in a basi
 
 #### Search Agent  `[exists — executor.py + tools/]`
 
-* Perform parallel searches *(currently sequential — see Phase 9)*
-* Retrieve academic papers *(needs Phase 1 tools)*
+* Perform parallel searches ✅ (executor uses `asyncio.gather`)
+* Retrieve academic papers ✅ (`search_arxiv`, `search_scholar`)
 * Discover trusted sources
 
 #### Analysis Agent  `[new]`
@@ -753,6 +757,8 @@ Frontend
 * Multi-step research pipeline
 * Research planning
 * Web search (Tavily)
+* Academic search (arXiv + Semantic Scholar)
+* Parallel tool execution (`asyncio.gather`)
 * HTML scraping
 * Source cleaning
 * Source deduplication
@@ -780,7 +786,8 @@ Frontend
 
 ### 📋 Planned
 
-* Academic databases
+* More academic databases (PubMed, CrossRef, Google Scholar)
+* Citation author/date enrichment (use academic-tool metadata in `CitationFormatter`)
 * Vector database
 * RAG pipeline
 * PDF processing

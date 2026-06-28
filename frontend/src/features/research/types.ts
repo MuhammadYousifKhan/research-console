@@ -5,7 +5,7 @@ export type StepStatus = 'completed' | 'failed'
 export type ResearchTask = {
   id: number
   description: string
-  tool: 'search_web' | 'scrape_page'
+  tool: 'search_web' | 'scrape_page' | 'search_arxiv' | 'search_scholar'
   input: string
   priority: 'low' | 'medium' | 'high'
 }

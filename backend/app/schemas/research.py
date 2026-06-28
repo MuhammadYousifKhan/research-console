@@ -12,7 +12,7 @@ class ResearchRequest(BaseModel):
 class ResearchTask(BaseModel):
     id: int
     description: str
-    tool: Literal["search_web", "scrape_page"]
+    tool: Literal["search_web", "scrape_page", "search_arxiv", "search_scholar"]
     input: str
     priority: Literal["low", "medium", "high"] = "medium"
 

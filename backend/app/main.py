@@ -28,6 +28,8 @@ from app.services.citations import CitationFormatter
 from app.services.llm import LLMClient, LLMError
 from app.services.research_cleanup import ResearchCleanupService
 from app.tools.scrape_page import ScrapePageTool
+from app.tools.search_arxiv import SearchArxivTool
+from app.tools.search_scholar import SearchScholarTool
 from app.tools.search_web import SearchWebTool
 
 
@@ -79,6 +81,8 @@ async def research(request: ResearchRequest, db: Session = Depends(get_db)) -> R
         tools={
             "search_web": SearchWebTool(),
             "scrape_page": ScrapePageTool(),
+            "search_arxiv": SearchArxivTool(),
+            "search_scholar": SearchScholarTool(),
         },
         memory=memory,
     )
