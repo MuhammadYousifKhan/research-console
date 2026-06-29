@@ -45,16 +45,17 @@ class SearchArxivTool:
                 if (name := author.find("name")) is not None
             ]
             published = entry.find("published")
-            year = published.get_text(strip=True)[:4] if published else ""
+            year_text = published.get_text(strip=True)[:4] if published else ""
             snippet = " ".join((summary_tag.get_text(" ", strip=True) if summary_tag else "").split())
-            author_label = ", ".join(authors[:3]) + (" et al." if len(authors) > 3 else "")
             sources.append(
                 Source(
                     title=title_tag.get_text(" ", strip=True) if title_tag else "Untitled",
                     url=url,
-                    snippet=" — ".join(part for part in (author_label, year, snippet) if part),
+                    snippet=snippet,
                     reliability="high",
                     source_type="academic",
+                    authors=authors,
+                    year=int(year_text) if year_text.isdigit() else None,
                 )
             )
 

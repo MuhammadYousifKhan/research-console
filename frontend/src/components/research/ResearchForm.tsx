@@ -1,29 +1,48 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 
-import { useAppDispatch } from '../../app/hooks'
-import { useCreateResearchMutation } from '../../features/research/researchApi'
-import { closeSidebar, selectRun } from '../../features/research/researchSlice'
-import { getErrorMessage } from '../../utils/format'
+import { useAppDispatch, useAppSelector } from '../../app/hooks'
+import { researchApi } from '../../features/research/researchApi'
+import {
+  closeSidebar,
+  selectRun,
+  streamCompleted,
+  streamFailed,
+  streamStarted,
+  streamStepReceived,
+} from '../../features/research/researchSlice'
+import { streamResearch } from '../../features/research/streamResearch'
 
 function ResearchForm() {
   const dispatch = useAppDispatch()
   const [query, setQuery] = useState('Research the impact of AI in healthcare in 2025')
   const [maxTasks, setMaxTasks] = useState(3)
-  const [createResearch, { isLoading, error }] = useCreateResearchMutation()
+  const streamStatus = useAppSelector((state) => state.researchUi.streamStatus)
+  const streamError = useAppSelector((state) => state.researchUi.streamError)
+  const isLoading = streamStatus === 'streaming'
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (isLoading) return
     const clampedTasks = Math.min(Math.max(Math.trunc(maxTasks) || 1, 1), 8)
-    try {
-      const created = await createResearch({ query, max_tasks: clampedTasks }).unwrap()
-      if (created.research_id != null) {
-        dispatch(selectRun(created.research_id))
-      }
-      dispatch(closeSidebar())
-    } catch {
-      // Error surfaced via the `error` state below.
-    }
+
+    dispatch(streamStarted({ query, maxTasks: clampedTasks }))
+    await streamResearch(
+      { query, max_tasks: clampedTasks },
+      {
+        onStep: (step) => dispatch(streamStepReceived(step)),
+        onComplete: (run) => {
+          if (run.research_id != null) {
+            dispatch(selectRun(run.research_id))
+          }
+          // The new run belongs in the history list; refetch it.
+          dispatch(researchApi.util.invalidateTags([{ type: 'History', id: 'LIST' }]))
+          dispatch(streamCompleted())
+          dispatch(closeSidebar())
+        },
+        onError: (message) => dispatch(streamFailed(message)),
+      },
+    )
   }
 
   return (
@@ -58,8 +77,8 @@ function ResearchForm() {
           </button>
         </div>
 
-        {error ? (
-          <p className="form-error">{getErrorMessage(error, 'Research request failed.')}</p>
+        {streamStatus === 'error' && streamError ? (
+          <p className="form-error">{streamError}</p>
         ) : null}
       </form>
     </section>

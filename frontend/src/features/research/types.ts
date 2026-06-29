@@ -23,6 +23,8 @@ export type Source = {
   snippet: string
   reliability: Reliability
   source_type: string
+  authors: string[]
+  year: number | null
 }
 
 export type Observation = {

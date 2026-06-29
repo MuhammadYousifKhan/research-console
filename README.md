@@ -36,14 +36,15 @@ A core design principle is **honest state reporting**: the console never fakes a
 - 🏷️ **Source credibility classification** — domain heuristics tag each source by type (academic, government, news, industry, organization) and reliability (high / medium / low / unknown).
 - ✍️ **Cited synthesis** — generates a structured answer using **only** the gathered evidence, with inline `[n]` citations.
 - ✅ **Support evaluation** — a dedicated evaluator checks whether the answer is supported, returns a confidence level, and lists missing evidence.
-- 📚 **Citation export** — every source rendered in **APA, MLA, IEEE, Harvard, Chicago, and BibTeX**, with per-reference and "copy all" buttons. Deterministic (no LLM); web-resource style with an accessed date.
+- 📚 **Citation export** — every source rendered in **APA, MLA, IEEE, Harvard, Chicago, and BibTeX**, with per-reference and "copy all" buttons. Deterministic (no LLM). Academic sources (arXiv / Semantic Scholar) cite real **authors and publication year**; web sources fall back to web-resource style with an accessed date.
+- 📡 **Live streaming progress** — `POST /research/stream` emits each pipeline stage as a **Server-Sent Event**, so the sidebar pipeline fills in stage-by-stage instead of waiting on a spinner. The same pipeline backs the plain `POST /research`.
 - 💾 **Persistence & history** — every run is stored (SQLite) and browsable from the dashboard.
 - 🔁 **Failure isolation** — a single tool or LLM failure degrades only that stage; the run always returns a partial, honestly-labeled result.
 - 🤖 **Dual LLM support** — works with any **OpenAI-compatible** API **or** **Google Gemini** (currently configured for Gemini 2.5 Flash).
 - 🎨 **Responsive dashboard** — the "Instrument" dark theme with a numbered pipeline, metric cards, source grid, and honest empty/error/loading states.
 
 ### Planned (see [Roadmap](#-roadmap--future-implementations))
-More academic source APIs (PubMed, CrossRef, Google Scholar), citation author/date enrichment, RAG + vector DB, document intelligence (PDF/DOCX), report export (PDF/DOCX bundle), multi-agent orchestration, workspaces, collaboration, analytics, and more.
+More academic source APIs (PubMed, CrossRef, Google Scholar), CrossRef DOI enrichment for web sources, RAG + vector DB, document intelligence (PDF/DOCX), report export (PDF/DOCX bundle), multi-agent orchestration, workspaces, collaboration, analytics, and more.
 
 ---
 
@@ -184,6 +185,7 @@ Base URL (dev): `http://127.0.0.1:8000` · Interactive docs: `http://127.0.0.1:8
 |---|---|---|
 | `GET` | `/health` | Health check → `{ "status": "ok" }` |
 | `POST` | `/research` | Run the full pipeline; persists and returns the complete result |
+| `POST` | `/research/stream` | Run the pipeline and stream each stage as **Server-Sent Events** (`step` × 5 → `complete`); `text/event-stream` |
 | `GET` | `/research?limit=N` | List recent run summaries (newest first, limit 1–100) |
 | `GET` | `/research/{id}` | Fetch one full run (`404` if not found) |
 | `GET` | `/research/{id}/citations` | Citations for the run's sources in all 6 styles + accessed date (`404` if not found) |
@@ -354,7 +356,7 @@ The full, phased roadmap (with dependencies and a recommended build order) lives
 | 6 | **Collaboration** — shared workspaces, roles, comments, live editing | ⚪ Later |
 | 7 | **Analytics & Visualization** — citation networks, knowledge graphs, timelines | ⚪ Later |
 | 8 | **AI Memory** — persistent cross-run preferences & history | ⚪ Later |
-| 9 | **Performance** — parallel/async execution ✅; next: caching, streaming progress | 🟢 Started |
+| 9 | **Performance** — parallel/async execution ✅, streaming progress (SSE) ✅; next: caching | 🟢 Started |
 | 10 | **Enterprise** — auth, OAuth, multi-tenancy, billing, audit logs | ⚪ Later |
 | 11 | **Deployment** — Docker, Kubernetes, CI/CD, monitoring | ⚪ Later |
 | 12 | **AI Enhancements** — long-term memory, self-reflection, multi-modal, voice | ⚪ Later |

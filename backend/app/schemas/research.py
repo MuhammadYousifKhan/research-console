@@ -28,6 +28,11 @@ class Source(BaseModel):
     snippet: str = ""
     reliability: Literal["unknown", "low", "medium", "high"] = "unknown"
     source_type: Literal["academic", "government", "industry", "news", "organization", "unknown"] = "unknown"
+    # Optional bibliographic metadata. Web sources leave these empty (citations
+    # fall back to web-resource style); academic tools populate them so the
+    # citation formatter can render real authors and publication years.
+    authors: list[str] = Field(default_factory=list)
+    year: int | None = None
 
 
 class Observation(BaseModel):

@@ -37,16 +37,17 @@ class SearchScholarTool:
             if not url:
                 continue
             authors = [author.get("name", "") for author in paper.get("authors", []) if author.get("name")]
-            year = str(paper.get("year") or "")
+            year = paper.get("year")
             abstract = " ".join((paper.get("abstract") or "").split())
-            author_label = ", ".join(authors[:3]) + (" et al." if len(authors) > 3 else "")
             sources.append(
                 Source(
                     title=paper.get("title") or "Untitled",
                     url=url,
-                    snippet=" — ".join(part for part in (author_label, year, abstract) if part),
+                    snippet=abstract,
                     reliability="high",
                     source_type="academic",
+                    authors=authors,
+                    year=int(year) if isinstance(year, int) else None,
                 )
             )
 

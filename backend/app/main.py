@@ -1,16 +1,13 @@
+import json
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.agents.executor import ResearchExecutor
-from app.agents.planner import ResearchPlanner
-from app.agents.synthesizer import ResearchSynthesizer
-from app.agents.evaluator import ResearchEvaluator
 from app.core.config import settings
 from app.core.database import Base, engine, get_db
-from app.memory.research_memory import ResearchMemory
 from app.models.research_run import ResearchRun
 from app.schemas.research import (
     CitationsResponse,
@@ -25,12 +22,7 @@ from app.schemas.research import (
     Source,
 )
 from app.services.citations import CitationFormatter
-from app.services.llm import LLMClient, LLMError
-from app.services.research_cleanup import ResearchCleanupService
-from app.tools.scrape_page import ScrapePageTool
-from app.tools.search_arxiv import SearchArxivTool
-from app.tools.search_scholar import SearchScholarTool
-from app.tools.search_web import SearchWebTool
+from app.services.pipeline import run_research_pipeline
 
 
 @asynccontextmanager
@@ -71,136 +63,41 @@ def health_check() -> dict[str, str]:
 
 @app.post("/research", response_model=ResearchResponse)
 async def research(request: ResearchRequest, db: Session = Depends(get_db)) -> ResearchResponse:
-    llm = LLMClient()
-    memory = ResearchMemory()
-    cleanup = ResearchCleanupService()
-    steps: list[ExecutionStep] = []
+    # Drain the shared pipeline; the streaming endpoint forwards the same events.
+    final: ResearchResponse | None = None
+    async for event in run_research_pipeline(request, db):
+        if event["type"] == "complete":
+            final = event["run"]
+    assert final is not None  # the generator always ends with a "complete" event
+    return final
 
-    planner = ResearchPlanner(llm=llm)
-    executor = ResearchExecutor(
-        tools={
-            "search_web": SearchWebTool(),
-            "scrape_page": ScrapePageTool(),
-            "search_arxiv": SearchArxivTool(),
-            "search_scholar": SearchScholarTool(),
-        },
-        memory=memory,
+
+@app.post("/research/stream")
+async def research_stream(request: ResearchRequest, db: Session = Depends(get_db)) -> StreamingResponse:
+    """Run the pipeline and stream each stage as Server-Sent Events.
+
+    Emits `data: {"type":"step", "step":{...}}` per stage, a final
+    `data: {"type":"complete", "run":{...}}`, or `{"type":"error"}` on an
+    unexpected failure. Clients should stop reading after `complete`/`error`.
+    """
+
+    async def event_stream():
+        try:
+            async for event in run_research_pipeline(request, db):
+                if event["type"] == "step":
+                    payload = {"type": "step", "step": event["step"].model_dump()}
+                else:
+                    payload = {"type": "complete", "run": event["run"].model_dump(mode="json")}
+                yield f"data: {json.dumps(payload)}\n\n"
+        except Exception as error:  # pragma: no cover - defensive; pipeline is failure-isolated
+            payload = {"type": "error", "message": f"{type(error).__name__}: {error}"}
+            yield f"data: {json.dumps(payload)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-    synthesizer = ResearchSynthesizer(llm=llm)
-    evaluator = ResearchEvaluator(llm=llm)
-
-    try:
-        plan = await planner.create_plan(request.query, max_tasks=request.max_tasks)
-        steps.append(
-            ExecutionStep(
-                name="planning",
-                status="completed",
-                detail=f"Created {len(plan.tasks)} research tasks.",
-            )
-        )
-    except LLMError as error:
-        plan = ResearchPlanner.fallback_plan(request.query, request.max_tasks)
-        steps.append(
-            ExecutionStep(
-                name="planning",
-                status="failed",
-                detail=f"Planner LLM call failed; used heuristic plan instead. {error}",
-            )
-        )
-
-    raw_observations = await executor.execute(plan.tasks)
-    failed_tools = sum(1 for obs in raw_observations if obs.metadata.get("error"))
-    steps.append(
-        ExecutionStep(
-            name="tool_execution",
-            status="failed" if failed_tools else "completed",
-            detail=(
-                f"Executed {len(raw_observations)} tool calls"
-                + (f" ({failed_tools} failed)." if failed_tools else ".")
-            ),
-        )
-    )
-
-    observations, sources = cleanup.clean_observations(raw_observations)
-    steps.append(
-        ExecutionStep(
-            name="cleanup",
-            status="completed",
-            detail=f"Normalized {len(sources)} unique sources and assigned citations.",
-        )
-    )
-
-    try:
-        answer = await synthesizer.create_answer(
-            request.query,
-            observations,
-            citation_context=cleanup.citation_context(sources),
-        )
-        steps.append(
-            ExecutionStep(
-                name="synthesis",
-                status="completed",
-                detail="Generated a cited research answer from cleaned evidence.",
-            )
-        )
-    except LLMError as error:
-        answer = (
-            "Synthesis could not be completed because the language model call failed. "
-            "The gathered sources above are still valid; see the synthesis step detail "
-            "for the underlying cause."
-        )
-        steps.append(
-            ExecutionStep(
-                name="synthesis",
-                status="failed",
-                detail=f"Synthesis LLM call failed: {error}",
-            )
-        )
-
-    try:
-        evaluation = await evaluator.evaluate(request.query, answer, observations)
-        steps.append(
-            ExecutionStep(
-                name="evaluation",
-                status="completed",
-                detail=f"Support check completed with {evaluation.confidence} confidence.",
-            )
-        )
-    except LLMError as error:
-        evaluation = ResearchEvaluator.fallback_evaluation(observations)
-        steps.append(
-            ExecutionStep(
-                name="evaluation",
-                status="failed",
-                detail=f"Evaluator LLM call failed; used heuristic evaluation instead. {error}",
-            )
-        )
-
-    response = ResearchResponse(
-        query=request.query,
-        plan=plan.tasks,
-        steps=steps,
-        sources=sources,
-        observations=observations,
-        answer=answer,
-        evaluation=evaluation,
-    )
-
-    research_run = ResearchRun(
-        query=response.query,
-        plan=[item.model_dump() for item in response.plan],
-        steps=[item.model_dump() for item in response.steps],
-        sources=[item.model_dump() for item in response.sources],
-        observations=[item.model_dump() for item in response.observations],
-        answer=response.answer,
-        evaluation=response.evaluation.model_dump(),
-    )
-    db.add(research_run)
-    db.commit()
-    db.refresh(research_run)
-
-    response.research_id = research_run.id
-    return response
 
 
 @app.get("/research", response_model=ResearchRunListResponse)

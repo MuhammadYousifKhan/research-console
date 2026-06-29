@@ -55,8 +55,9 @@ async def test_arxiv_parses_papers(monkeypatch):
     assert source.url == "http://arxiv.org/abs/1706.03762v5"
     assert source.source_type == "academic"
     assert source.reliability == "high"
-    assert "Ashish Vaswani" in source.snippet
-    assert "2017" in source.snippet
+    assert source.authors == ["Ashish Vaswani", "Noam Shazeer"]
+    assert source.year == 2017
+    assert "attention" in source.snippet.lower()
     assert observation.metadata["provider"] == "arxiv"
 
 
@@ -82,8 +83,8 @@ async def test_scholar_parses_papers(monkeypatch):
     assert source.source_type == "academic"
     assert source.reliability == "high"
     assert source.url == "https://www.semanticscholar.org/paper/abc123"
-    assert "Ashish Vaswani" in source.snippet
-    assert "2017" in source.snippet
+    assert source.authors == ["Ashish Vaswani", "Noam Shazeer"]
+    assert source.year == 2017
 
 
 @pytest.mark.asyncio
