@@ -7,7 +7,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
-    app_name: str = "Autonomous Research AI Agent"
+    app_name: str = "Axiom — An Autonomous AI Research Agent"
     app_env: str = "development"
     database_url: str = "sqlite:///./research.db"
     openai_api_key: str = ""

@@ -1,8 +1,8 @@
-# 🔬 Research Console — Autonomous AI Research Agent
+# 🔬 Axiom — An Autonomous AI Research Agent
 
 > Turn a single research question into a **cited, evaluated answer** — with a transparent, multi-step agent pipeline you can watch end to end.
 
-Research Console is a full-stack application that automates the research loop: it **plans** research tasks, **searches & scrapes** sources, **cleans & classifies** evidence, **synthesizes** a cited answer, and **evaluates** whether that answer is actually supported by the evidence. Every run — tasks, pipeline steps, sources, answer, and support evaluation — is surfaced in a responsive React dashboard.
+Axiom is a full-stack application that automates the research loop: it **plans** research tasks, **searches & scrapes** sources, **cleans & classifies** evidence, **retrieves** the most relevant passages (RAG), **synthesizes** a cited answer, and **evaluates** whether that answer is actually supported by the evidence. Every run — tasks, pipeline steps, sources, answer, and support evaluation — is surfaced in a responsive React dashboard.
 
 A core design principle is **honest state reporting**: the console never fakes a result. Tool failures, LLM failures, and low-confidence evaluations are shown explicitly instead of being hidden.
 
@@ -315,7 +315,7 @@ npm run test:backend     # pytest
 ### Backend (`backend/.env`)
 | Variable | Default | Purpose |
 |---|---|---|
-| `APP_NAME` | "Autonomous Research AI Agent" | App title |
+| `APP_NAME` | "Axiom — An Autonomous AI Research Agent" | App title |
 | `APP_ENV` | development | Environment label |
 | `DATABASE_URL` | `sqlite:///./research.db` | DB connection string |
 | `OPENAI_API_KEY` | _(empty)_ | LLM key — **required** |
@@ -388,6 +388,6 @@ No license file is currently included. Add one (e.g., MIT) before public distrib
 
 <div align="center">
 
-**Research Console** · Built with FastAPI + React · See [`spec.md`](spec.md) for the full specification.
+**Axiom** · Built with FastAPI + React · See [`spec.md`](spec.md) for the full specification.
 
 </div>

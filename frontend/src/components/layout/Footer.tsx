@@ -6,9 +6,9 @@ function Footer() {
       <div className="footer-inner">
         <div className="footer-brand">
           <span className="dot" aria-hidden="true" />
-          <span>Research Console</span>
+          <span>Axiom</span>
         </div>
-        <p className="footer-copy">© {year} · Autonomous Research Agent</p>
+        <p className="footer-copy">© {year} · Axiom · An Autonomous AI Research Agent</p>
       </div>
     </footer>
   )

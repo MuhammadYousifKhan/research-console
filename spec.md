@@ -1,4 +1,4 @@
-# Research Console — Project Specification
+# Axiom — Project Specification
 
 > **Status:** Living document · Generated 2026-06-28 · Reflects the current `main` branch.
 > This spec documents the system **as it is built today**. Update sections as the project evolves.
@@ -7,7 +7,7 @@
 
 ## 1. Overview
 
-**Research Console** (a.k.a. *Autonomous Research AI Agent*) is a full-stack application that turns a single research question into a cited, evaluated answer. It runs an autonomous, multi-step pipeline — **plan → search/scrape → clean → synthesize → evaluate** — and exposes the entire run (tasks, pipeline steps, sources, answer, support evaluation) through a React dashboard.
+**Axiom** (*An Autonomous AI Research Agent*) is a full-stack application that turns a single research question into a cited, evaluated answer. It runs an autonomous, multi-step pipeline — **plan → search/scrape → clean → retrieve → synthesize → evaluate** — and exposes the entire run (tasks, pipeline steps, sources, answer, support evaluation) through a React dashboard.
 
 A core design principle is **honest state reporting**: the console never fakes a result. Tool failures, LLM failures, and low-confidence evaluations are surfaced explicitly rather than hidden.
 
@@ -345,7 +345,7 @@ Backend settings ([`core/config.py`](backend/app/core/config.py)) are environmen
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `APP_NAME` | "Autonomous Research AI Agent" | App title |
+| `APP_NAME` | "Axiom — An Autonomous AI Research Agent" | App title |
 | `APP_ENV` | development | Environment label |
 | `DATABASE_URL` | `sqlite:///./research.db` | DB connection |
 | `OPENAI_API_KEY` | "" | LLM key (**required**) |
@@ -434,7 +434,7 @@ copy .env.example .env   # then fill in OPENAI_API_KEY (+ TAVILY_API_KEY)
 
 ## 16. Roadmap & Future Improvements
 
-The following roadmap outlines the planned evolution of the Research Console from its current MVP into a production-grade autonomous AI research platform.
+The following roadmap outlines the planned evolution of Axiom from its current MVP into a production-grade autonomous AI research platform.
 
 ### 16.0 How to read this roadmap
 
@@ -819,7 +819,7 @@ Frontend
 
 ## 18. Long-Term Vision
 
-Research Console aims to evolve into a fully autonomous AI research platform capable of performing end-to-end research with minimal human intervention.
+Axiom aims to evolve into a fully autonomous AI research platform capable of performing end-to-end research with minimal human intervention.
 
 The long-term objectives include:
 

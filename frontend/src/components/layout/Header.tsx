@@ -7,11 +7,11 @@ function Header() {
   return (
     <header className="hero-bar">
       <div className="hero-title">
-        <p className="eyebrow">Autonomous Research Agent</p>
-        <h1>Research Console</h1>
+        <p className="eyebrow">An Autonomous AI Research Agent</p>
+        <h1>Axiom</h1>
         <p className="subtitle">
-          Launch a run, watch the five-stage pipeline, and read the cited, evaluated answer.
-          The console reports real state — failures included.
+          Launch a run, watch the six-stage pipeline, and read the cited, evaluated answer.
+          Axiom reports real state — failures included.
         </p>
       </div>
 
