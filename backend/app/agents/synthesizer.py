@@ -11,11 +11,17 @@ class ResearchSynthesizer:
         query: str,
         observations: list[Observation],
         citation_context: str = "",
+        evidence_text: str | None = None,
     ) -> str:
-        evidence = "\n\n".join(
-            f"Task {item.task_id}: {item.task}\nResult: {item.result}"
-            for item in observations
-        )
+        # ``evidence_text`` is the RAG path: pre-retrieved, citation-tagged chunks.
+        # When absent, fall back to concatenating every observation (original path).
+        if evidence_text is not None:
+            evidence = evidence_text
+        else:
+            evidence = "\n\n".join(
+                f"Task {item.task_id}: {item.task}\nResult: {item.result}"
+                for item in observations
+            )
         return await self.llm.complete_text(
             system=(
                 "You are a research synthesis agent. Use only the provided evidence. "

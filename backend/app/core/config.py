@@ -14,6 +14,14 @@ class Settings(BaseSettings):
     openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str = "gpt-4.1-mini"
     tavily_api_key: str = ""
+    # --- RAG (retrieval-augmented generation) ---
+    # When enabled, gathered evidence is chunked, embedded into a per-run
+    # in-memory Chroma index, and only the top-k query-relevant chunks are fed
+    # to synthesis. Disable to fall back to feeding all evidence (the old path).
+    rag_enabled: bool = True
+    rag_top_k: int = 8
+    rag_chunk_size: int = 800
+    rag_chunk_overlap: int = 120
     cors_allow_origins: str = (
         "http://localhost:5173,http://127.0.0.1:5173,"
         "http://localhost:5174,http://127.0.0.1:5174,"

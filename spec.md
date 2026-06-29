@@ -87,15 +87,16 @@ Research-Console/
                                        React dashboard (RTK Query)
 ```
 
-### 3.2 Pipeline stages (the five `ExecutionStep`s)
+### 3.2 Pipeline stages (the six `ExecutionStep`s)
 
 The orchestration lives in [`services/pipeline.py`](backend/app/services/pipeline.py) as `run_research_pipeline()` — an **async generator** that yields one event per stage and a final `complete` event (the single source of truth for the pipeline). Both `POST /research` (drains it, returns the final run) and `POST /research/stream` (forwards each event as SSE) consume it. Each stage produces a named `ExecutionStep`, marked `completed` or `failed`:
 
 1. **planning** — `ResearchPlanner.create_plan()` decomposes the query into tool-ready tasks. On LLM failure → `fallback_plan()` (heuristic 2-task plan) and the step is marked `failed`.
 2. **tool_execution** — `ResearchExecutor.execute()` runs each task's tool. Individual tool failures are caught and recorded; the step is `failed` if any tool errored.
 3. **cleanup** — `ResearchCleanupService.clean_observations()` normalizes text, dedupes sources by URL, classifies each source (type + reliability), and assigns numbered citations.
-4. **synthesis** — `ResearchSynthesizer.create_answer()` writes a cited answer from the cleaned evidence. On LLM failure → a transparent placeholder answer + `failed` step.
-5. **evaluation** — `ResearchEvaluator.evaluate()` checks whether the answer is supported by the evidence and returns confidence + missing evidence. On LLM failure → `fallback_evaluation()`.
+4. **retrieval** — `RAGRetriever.build_and_retrieve()` chunks the evidence, embeds it into a per-run in-memory Chroma index, and keeps only the top-k chunks most relevant to the query (citation tags preserved). On any failure → `RAGError` is caught, the step is `failed`, and synthesis falls back to feeding all evidence. Skipped (reported `completed`) when `rag_enabled=False`. See §6 RAG.
+5. **synthesis** — `ResearchSynthesizer.create_answer()` writes a cited answer from the retrieved chunks (or all evidence on fallback). On LLM failure → a transparent placeholder answer + `failed` step.
+6. **evaluation** — `ResearchEvaluator.evaluate()` checks whether the answer is supported by the evidence and returns confidence + missing evidence. On LLM failure → `fallback_evaluation()`.
 
 Each stage is **failure-isolated**: one failure degrades that stage but never aborts the run, so the user always gets a partial, honestly-labeled result.
 
@@ -143,6 +144,7 @@ The planner may only emit these four tool names (enforced by the `ResearchTask.t
 |---|---|---|
 | **LLMClient** | `services/llm.py` | Unified async LLM client. `complete_text()` and `complete_json()` (strips code fences, parses JSON). Dual OpenAI-compatible / Gemini support. Rich `LLMError` messages (HTTP status + body excerpt). `temperature=0.2`, 45s timeout. |
 | **ResearchCleanupService** | `services/research_cleanup.py` | Text normalization (strips markdown/URLs/cookie noise), URL-based dedup, citation numbering, and **domain-heuristic source classification** → `(source_type, reliability)`. Builds the numbered `citation_context` string for the synthesizer. |
+| **RAGRetriever** | `services/rag.py` | Per-run retrieval-augmented generation. `TextChunker` splits evidence into overlapping word-aligned windows (`rag_chunk_size`/`rag_chunk_overlap`); `RAGRetriever.build_and_retrieve()` embeds chunks into an **ephemeral in-memory Chroma index** (Chroma's built-in local MiniLM ONNX model — no API key) and returns the top-`rag_top_k` chunks most relevant to the query, each tagged with its source citation ids. `format_evidence()` renders them (citation tags first) for synthesis. Raises `RAGError` on any failure so the pipeline can fall back to full-evidence synthesis. Toggle with `rag_enabled`. |
 | **ResearchMemory** | `memory/research_memory.py` | In-memory, **per-request** store of observations + unique sources. Not persisted across runs. |
 | **CitationFormatter** | `services/citations.py` | Deterministic (no-LLM) reference formatter. Renders each `Source` as **APA / MLA / IEEE / Harvard / Chicago / BibTeX**. Sources with bibliographic metadata (`authors`/`year` from the academic tools) get a proper author-year citation (per-style name formatting; >6 authors → "et al."); web sources without metadata fall back to *web-resource* style: site name = URL host, date = `n.d.`, plus an **accessed date** (today). Backs the `GET /research/{id}/citations` endpoint. |
 
@@ -248,6 +250,7 @@ Research-Console/
 │   │   ├── services/
 │   │   │   ├── llm.py              # OpenAI/Gemini client
 │   │   │   ├── research_cleanup.py # dedupe, classify, cite
+│   │   │   ├── rag.py              # chunk + embed + retrieve (Chroma, per-run)
 │   │   │   └── citations.py        # APA/MLA/IEEE/Harvard/Chicago/BibTeX formatter
 │   │   ├── memory/
 │   │   │   └── research_memory.py  # per-run in-memory store
@@ -349,11 +352,17 @@ Backend settings ([`core/config.py`](backend/app/core/config.py)) are environmen
 | `OPENAI_BASE_URL` | OpenAI / Gemini base | Switches LLM provider |
 | `OPENAI_MODEL` | `gemini-2.5-flash` (current) | Model id |
 | `TAVILY_API_KEY` | "" | Web search (optional) |
+| `RAG_ENABLED` | `true` | Toggle the RAG retrieval stage (off → synthesis uses all evidence) |
+| `RAG_TOP_K` | `8` | Number of chunks retrieved for synthesis |
+| `RAG_CHUNK_SIZE` | `800` | Max chars per evidence chunk |
+| `RAG_CHUNK_OVERLAP` | `120` | Char overlap between consecutive chunks |
 | `CORS_ALLOW_ORIGINS` | localhost/127.0.0.1 :5173–5175 | Allowed frontend origins |
 
 Frontend: `VITE_API_BASE_URL` in `frontend/.env` (optional).
 
 > ⚠️ **Secrets:** `backend/.env` is gitignored. Never commit real keys. Rotate any key that has been shared.
+
+> 📦 **First-run model download:** with RAG enabled, the first run downloads Chroma's local MiniLM embedding model (~80 MB) to `~/.cache/chroma/`. If the machine is offline or the download fails, the `retrieval` step is reported `failed` and synthesis transparently falls back to full evidence — the run still completes.
 
 ---
 
@@ -410,15 +419,14 @@ copy .env.example .env   # then fill in OPENAI_API_KEY (+ TAVILY_API_KEY)
 
 ## 15. Current Scope & Known Limitations
 
-**Implemented:** core autonomous research loop (plan→execute→clean→synthesize→evaluate), Tavily web search + HTML scrape, domain-heuristic credibility, numbered citations, citation export in 6 styles (APA/MLA/IEEE/Harvard/Chicago/BibTeX), SQLite persistence + history, dual OpenAI/Gemini LLM support, responsive React dashboard with honest empty/error/loading states.
+**Implemented:** core autonomous research loop (plan→execute→**retrieve**→synthesize→evaluate), Tavily web search + arXiv/Semantic Scholar academic tools + HTML scrape, parallel executor, domain-heuristic credibility, numbered citations, citation export in 6 styles (APA/MLA/IEEE/Harvard/Chicago/BibTeX), **per-run RAG retrieval (Chroma + local MiniLM embeddings)**, **SSE streaming progress**, SQLite persistence + history, dual OpenAI/Gemini LLM support, responsive React dashboard with honest empty/running/error/loading states.
 
 **Not yet implemented (notable gaps):**
-- No academic source APIs (arXiv, Semantic Scholar, PubMed), GitHub, or data portals — web search only.
-- No RAG / vector DB — evidence is concatenated into the prompt.
+- RAG retrieval is **per-run / ephemeral** — no persistent cross-run vector store, no hybrid (keyword+vector) retrieval yet.
+- No academic source APIs beyond arXiv/Semantic Scholar (PubMed, CrossRef, GitHub, data portals).
 - No document intelligence (PDF/DOCX upload, OCR, tables/figures).
 - Citation **styles** (APA/MLA/IEEE/Harvard/Chicago/BibTeX) are implemented; full **report export** (PDF/DOCX/Markdown bundle) is not.
 - No workspace (projects/folders/tags), auth, collaboration, or cross-run memory.
-- No streaming progress (run is request/response; UI waits for completion).
 - Executor runs tasks **sequentially** (no parallelism).
 - No automated test coverage wired up yet (pytest configured, `backend/tests/` referenced).
 
@@ -442,7 +450,7 @@ The following roadmap outlines the planned evolution of the Research Console fro
 | 1 | ~~Parallelize executor (`asyncio.gather`)~~ ✅ **done** — executor now fans out tool calls concurrently, preserving order; per-task failures captured. (retry/backoff still TODO) | 9 | Cheap, immediate latency win; executor was sequential | — |
 | 2 | ~~Academic search tools (arXiv, Semantic Scholar — free, no key)~~ ✅ **done** — `search_arxiv` + `search_scholar` tools registered; planner routes scientific queries to them | 1 | Biggest research-quality jump; plugs into the existing tool registry | — |
 | 3 | ~~Citation Agent + export (APA/MLA/IEEE/BibTeX)~~ ✅ **done** — `CitationFormatter` + `GET /research/{id}/citations` + UI export panel (6 styles) | 2 | High perceived value, cheap; `Source` objects already structured | — |
-| 4 | RAG pipeline + vector DB (Chroma) | 3 | Unlocks document chat, analysis, scale; foundational | tools (1–2) |
+| 4 | ~~RAG pipeline + vector DB (Chroma)~~ ✅ **done** — per-run `retrieval` stage in `pipeline.py`; `RAGRetriever` (`services/rag.py`) chunks + embeds evidence into an ephemeral Chroma index (local MiniLM) and feeds top-k citation-tagged chunks to synthesis; honest fallback on failure | 3 | Unlocks document chat, analysis, scale; foundational | tools (1–2) |
 | 5 | ~~Streaming progress (SSE/WebSocket)~~ ✅ **done** — `POST /research/stream` SSE; sidebar pipeline fills in stage-by-stage live | 9 | Replaces request/response wait with live pipeline | — |
 | 6 | Document intelligence (PDF via PyMuPDF) | 4 | Core "researcher" use case | RAG (4) |
 | 7 | Analysis + Reviewer agents | 2 | Contradiction/gap detection, QA pass | RAG (4) |
@@ -555,22 +563,22 @@ Generate (currently one structured answer; expand to multiple document types):
 
 ---
 
-### Phase 3 — Retrieval-Augmented Generation (RAG)  🟡 Next
+### Phase 3 — Retrieval-Augmented Generation (RAG)  🟢 Started
 
-> **Foundational.** Today evidence is concatenated straight into the synthesis prompt (no retrieval, no embeddings). RAG is the prerequisite for document chat (Phase 4), deeper analysis (Phase 2), and scaling past a handful of sources. Recommended first DB: **Chroma** (local, zero-ops).
+> **Foundational.** ✅ **A per-run RAG retrieval stage is now live** (`services/rag.py`, `retrieval` step in `pipeline.py`): evidence is chunked, embedded into an **ephemeral in-memory Chroma index** using Chroma's built-in **local MiniLM ONNX** model (no API key, no LLM quota), and the top-`rag_top_k` query-relevant chunks — each tagged with its source citation ids — are fed to synthesis. On any failure it raises `RAGError` and synthesis falls back to feeding all evidence (honest-state). Toggle via `rag_enabled`; tune via `rag_top_k`/`rag_chunk_size`/`rag_chunk_overlap`. RAG is the prerequisite for document chat (Phase 4), deeper analysis (Phase 2), and scaling past a handful of sources.
 
 Implement a complete RAG pipeline.
 
-Features include:
+Features:
 
-* Document chunking
-* Embedding generation
-* Vector database
-* Semantic retrieval
-* Hybrid retrieval
-* Metadata filtering
-* Citation-aware retrieval
-* Incremental indexing
+* Document chunking ✅ (`TextChunker`, overlapping word-aligned windows)
+* Embedding generation ✅ (Chroma local MiniLM, no key)
+* Vector database ✅ (Chroma, **per-run / ephemeral** — persistent cross-run store still TODO)
+* Semantic retrieval ✅ (top-k by query similarity)
+* Citation-aware retrieval ✅ (chunks carry their source citation ids)
+* Hybrid retrieval (keyword + vector) — TODO
+* Metadata filtering — TODO
+* Incremental / persistent cross-run indexing — TODO
 
 Supported vector databases:
 

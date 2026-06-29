@@ -8,6 +8,7 @@ from app.agents.evaluator import ResearchEvaluator
 from app.agents.executor import ResearchExecutor
 from app.agents.planner import ResearchPlanner
 from app.agents.synthesizer import ResearchSynthesizer
+from app.core.config import settings
 from app.core.database import Base, get_db
 from app.models.research_run import ResearchRun
 from app.schemas.research import Evaluation, Observation, ResearchPlan, ResearchTask, Source
@@ -62,7 +63,7 @@ def test_research_endpoints_persist_and_retrieve_runs(tmp_path, monkeypatch):
             )
         ]
 
-    async def fake_create_answer(self, query, observations, citation_context=""):
+    async def fake_create_answer(self, query, observations, citation_context="", evidence_text=None):
         return "Summary with evidence [1]"
 
     async def fake_evaluate(self, query, answer, observations):
@@ -73,6 +74,8 @@ def test_research_endpoints_persist_and_retrieve_runs(tmp_path, monkeypatch):
             notes="Looks supported.",
         )
 
+    # Keep the test hermetic: skip the real Chroma index / embedding-model download.
+    monkeypatch.setattr(settings, "rag_enabled", False)
     monkeypatch.setattr(ResearchPlanner, "create_plan", fake_create_plan)
     monkeypatch.setattr(ResearchExecutor, "execute", fake_execute)
     monkeypatch.setattr(ResearchSynthesizer, "create_answer", fake_create_answer)

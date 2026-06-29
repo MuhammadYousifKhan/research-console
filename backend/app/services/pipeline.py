@@ -14,8 +14,10 @@ from app.schemas.research import (
     ResearchRequest,
     ResearchResponse,
 )
+from app.core.config import settings
 from app.services.citations import CitationFormatter  # noqa: F401  (kept for parity / future use)
 from app.services.llm import LLMClient, LLMError
+from app.services.rag import RAGError, RAGRetriever
 from app.services.research_cleanup import ResearchCleanupService
 from app.tools.scrape_page import ScrapePageTool
 from app.tools.search_arxiv import SearchArxivTool
@@ -98,12 +100,44 @@ async def run_research_pipeline(request: ResearchRequest, db: Session) -> AsyncI
     steps.append(step)
     yield {"type": "step", "step": step}
 
+    # --- retrieval (RAG) ------------------------------------------------
+    # Chunk + embed the evidence and keep only the top-k chunks most relevant to
+    # the query. On any failure we fall back to feeding all evidence (evidence_text
+    # stays None), and report the retrieval step as failed — never abort the run.
+    evidence_text: str | None = None
+    if settings.rag_enabled:
+        try:
+            retriever = RAGRetriever()
+            chunks = retriever.build_and_retrieve(request.query, observations, sources)
+            evidence_text = RAGRetriever.format_evidence(chunks)
+            step = ExecutionStep(
+                name="retrieval",
+                status="completed",
+                detail=f"Indexed evidence and retrieved {len(chunks)} relevant chunks for synthesis.",
+            )
+        except RAGError as error:
+            evidence_text = None
+            step = ExecutionStep(
+                name="retrieval",
+                status="failed",
+                detail=f"Retrieval unavailable; synthesizing from all evidence instead. {error}",
+            )
+    else:
+        step = ExecutionStep(
+            name="retrieval",
+            status="completed",
+            detail="Retrieval disabled; synthesizing from all gathered evidence.",
+        )
+    steps.append(step)
+    yield {"type": "step", "step": step}
+
     # --- synthesis ------------------------------------------------------
     try:
         answer = await synthesizer.create_answer(
             request.query,
             observations,
             citation_context=cleanup.citation_context(sources),
+            evidence_text=evidence_text,
         )
         step = ExecutionStep(
             name="synthesis",

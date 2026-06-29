@@ -34,7 +34,8 @@ A core design principle is **honest state reporting**: the console never fakes a
 - ⚡ **Parallel tool execution** — all of a plan's tool calls run concurrently (`asyncio.gather`), preserving order; one failure never aborts the run.
 - 🧹 **Evidence cleanup** — text normalization, URL-based deduplication, and numbered citation assignment.
 - 🏷️ **Source credibility classification** — domain heuristics tag each source by type (academic, government, news, industry, organization) and reliability (high / medium / low / unknown).
-- ✍️ **Cited synthesis** — generates a structured answer using **only** the gathered evidence, with inline `[n]` citations.
+- 🧠 **RAG retrieval** — gathered evidence is chunked, embedded into a per-run **Chroma** vector index (local MiniLM model, no API key), and only the **top-k most query-relevant, citation-tagged chunks** are fed to synthesis. Falls back to full evidence if retrieval is unavailable.
+- ✍️ **Cited synthesis** — generates a structured answer using **only** the gathered (retrieved) evidence, with inline `[n]` citations.
 - ✅ **Support evaluation** — a dedicated evaluator checks whether the answer is supported, returns a confidence level, and lists missing evidence.
 - 📚 **Citation export** — every source rendered in **APA, MLA, IEEE, Harvard, Chicago, and BibTeX**, with per-reference and "copy all" buttons. Deterministic (no LLM). Academic sources (arXiv / Semantic Scholar) cite real **authors and publication year**; web sources fall back to web-resource style with an accessed date.
 - 📡 **Live streaming progress** — `POST /research/stream` emits each pipeline stage as a **Server-Sent Event**, so the sidebar pipeline fills in stage-by-stage instead of waiting on a spinner. The same pipeline backs the plain `POST /research`.
@@ -44,7 +45,7 @@ A core design principle is **honest state reporting**: the console never fakes a
 - 🎨 **Responsive dashboard** — the "Instrument" dark theme with a numbered pipeline, metric cards, source grid, and honest empty/error/loading states.
 
 ### Planned (see [Roadmap](#-roadmap--future-implementations))
-More academic source APIs (PubMed, CrossRef, Google Scholar), CrossRef DOI enrichment for web sources, RAG + vector DB, document intelligence (PDF/DOCX), report export (PDF/DOCX bundle), multi-agent orchestration, workspaces, collaboration, analytics, and more.
+More academic source APIs (PubMed, CrossRef, Google Scholar), CrossRef DOI enrichment for web sources, persistent cross-run + hybrid RAG retrieval, document intelligence (PDF/DOCX), report export (PDF/DOCX bundle), multi-agent orchestration, workspaces, collaboration, analytics, and more.
 
 ---
 
@@ -54,12 +55,12 @@ More academic source APIs (PubMed, CrossRef, Google Scholar), CrossRef DOI enric
                           ┌───────────────────────────────────────────────┐
    POST /research         │                  FastAPI app                   │
   { query, max_tasks } ──▶│                                                │
-                          │   Planner ─▶ Executor ─▶ Cleanup ─▶ Synthesizer│─▶ Evaluator
-                          │     │           │           │           │        │     │
-                          │     │           ▼           ▼           ▼        │     ▼
-                          │     │     Tools(search,   dedupe +   cited      │  support +
-                          │     │      scrape)        classify   answer     │  confidence
-                          │     ▼                                           │
+                          │  Planner ▶ Executor ▶ Cleanup ▶ Retrieval ▶ Synth│▶ Evaluator
+                          │     │          │          │          │        │  │     │
+                          │     │          ▼          ▼          ▼        ▼  │     ▼
+                          │     │    Tools(search,  dedupe +  top-k     cited│  support +
+                          │     │     scrape)       classify  chunks    answer  confidence
+                          │     ▼                            (Chroma)        │
                           │  task list                                      │
                           └───────────────────────┬───────────────────────┘
                                                    │  persist full run (SQLite)
@@ -87,6 +88,7 @@ The pipeline is **linear and sequential**, producing one named `ExecutionStep` p
 | HTTP client | httpx (async) |
 | HTML parsing | BeautifulSoup4 |
 | ORM / DB | SQLAlchemy 2.0 + SQLite |
+| Vector DB / embeddings | Chroma (per-run, in-memory) + local MiniLM ONNX |
 | Testing | pytest + pytest-asyncio |
 
 ### Frontend
@@ -116,8 +118,9 @@ The pipeline is **linear and sequential**, producing one named `ExecutionStep` p
 | 1. Planning | `ResearchPlanner` | Query → ≤ `max_tasks` tool-ready tasks (strict JSON) | Heuristic background + risks plan |
 | 2. Tool execution | `ResearchExecutor` | Runs each task's tool, captures observations | Per-task error capture (run continues) |
 | 3. Cleanup | `ResearchCleanupService` | Normalize text, dedupe by URL, classify sources, number citations | — |
-| 4. Synthesis | `ResearchSynthesizer` | Cited answer from evidence only | Transparent placeholder answer |
-| 5. Evaluation | `ResearchEvaluator` | `is_supported`, `confidence`, `missing_evidence`, `notes` | Heuristic evaluation from evidence presence |
+| 4. Retrieval | `RAGRetriever` | Chunk + embed evidence into a per-run Chroma index; keep top-k citation-tagged chunks for synthesis | Falls back to full evidence (step marked `failed`) |
+| 5. Synthesis | `ResearchSynthesizer` | Cited answer from the retrieved evidence | Transparent placeholder answer |
+| 6. Evaluation | `ResearchEvaluator` | `is_supported`, `confidence`, `missing_evidence`, `notes` | Heuristic evaluation from evidence presence |
 
 **Tools** (in `backend/app/tools/`):
 - `search_web` — Tavily search (basic depth, 5 results); returns a "not configured" notice if `TAVILY_API_KEY` is missing.
@@ -125,7 +128,7 @@ The pipeline is **linear and sequential**, producing one named `ExecutionStep` p
 - `search_scholar` — free, key-less Semantic Scholar Graph API (5 results); reports HTTP 429 rate-limiting honestly.
 - `scrape_page` — fetches a URL, parses with BeautifulSoup, extracts readable `<p>` text (capped at 3000 chars).
 
-> This is a hand-rolled multi-agent setup (no LangChain/LangGraph yet) whose executor runs tool calls in parallel. The [roadmap](#-roadmap--future-implementations) extends it into RAG-backed, specialized agents.
+> This is a hand-rolled multi-agent setup (no LangChain/LangGraph yet) whose executor runs tool calls in parallel and whose synthesis is RAG-backed (per-run Chroma index). The [roadmap](#-roadmap--future-implementations) extends it into specialized agents with persistent retrieval.
 
 ---
 
@@ -147,6 +150,9 @@ Research-Console/
 │   │   │   └── scrape_page.py      # URL → readable text
 │   │   ├── services/
 │   │   │   ├── llm.py              # OpenAI/Gemini client
+│   │   │   ├── pipeline.py         # async-generator pipeline orchestration
+│   │   │   ├── rag.py              # chunk + embed + retrieve (Chroma, per-run)
+│   │   │   ├── citations.py        # 6-style citation formatter
 │   │   │   └── research_cleanup.py # dedupe, classify, cite
 │   │   ├── memory/research_memory.py
 │   │   ├── schemas/research.py     # Pydantic models
@@ -185,7 +191,7 @@ Base URL (dev): `http://127.0.0.1:8000` · Interactive docs: `http://127.0.0.1:8
 |---|---|---|
 | `GET` | `/health` | Health check → `{ "status": "ok" }` |
 | `POST` | `/research` | Run the full pipeline; persists and returns the complete result |
-| `POST` | `/research/stream` | Run the pipeline and stream each stage as **Server-Sent Events** (`step` × 5 → `complete`); `text/event-stream` |
+| `POST` | `/research/stream` | Run the pipeline and stream each stage as **Server-Sent Events** (`step` × 6 → `complete`); `text/event-stream` |
 | `GET` | `/research?limit=N` | List recent run summaries (newest first, limit 1–100) |
 | `GET` | `/research/{id}` | Fetch one full run (`404` if not found) |
 | `GET` | `/research/{id}/citations` | Citations for the run's sources in all 6 styles + accessed date (`404` if not found) |
@@ -350,7 +356,7 @@ The full, phased roadmap (with dependencies and a recommended build order) lives
 |---|---|---|
 | 1 | **Research Intelligence** — arXiv ✅, Semantic Scholar ✅; next: PubMed, GitHub, semantic search, query expansion | 🟢 Started |
 | 2 | **Multi-Agent Architecture** — Analysis & Reviewer agents; LangGraph orchestration (Citation export ✅ done) | 🟢 Started |
-| 3 | **RAG** — chunking, embeddings, vector DB (Chroma/Qdrant/Pinecone), hybrid retrieval | 🟡 Next |
+| 3 | **RAG** — per-run chunking + embeddings + Chroma vector index + citation-aware top-k retrieval ✅; next: persistent cross-run store, hybrid retrieval | 🟢 Started |
 | 4 | **Document Intelligence** — PDF/DOCX upload, OCR, table/figure/citation extraction, doc chat | ⚪ Later |
 | 5 | **Research Workspace** — projects, folders, tags, collections, notes | ⚪ Later |
 | 6 | **Collaboration** — shared workspaces, roles, comments, live editing | ⚪ Later |
@@ -361,7 +367,7 @@ The full, phased roadmap (with dependencies and a recommended build order) lives
 | 11 | **Deployment** — Docker, Kubernetes, CI/CD, monitoring | ⚪ Later |
 | 12 | **AI Enhancements** — long-term memory, self-reflection, multi-modal, voice | ⚪ Later |
 
-**Recommended near-term build order:** parallelize the executor → add academic search tools → citation export → RAG pipeline → streaming progress. See [`spec.md` §16](spec.md) for the detailed table.
+**Recommended near-term build order:** parallelize the executor ✅ → academic search tools ✅ → citation export ✅ → streaming progress ✅ → RAG pipeline ✅ → document intelligence (next). See [`spec.md` §16](spec.md) for the detailed table.
 
 ---
 

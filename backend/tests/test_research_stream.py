@@ -8,6 +8,7 @@ from app.agents.evaluator import ResearchEvaluator
 from app.agents.executor import ResearchExecutor
 from app.agents.planner import ResearchPlanner
 from app.agents.synthesizer import ResearchSynthesizer
+from app.core.config import settings
 from app.core.database import Base, get_db
 from app.models.research_run import ResearchRun
 from app.schemas.research import Evaluation, Observation, ResearchPlan, ResearchTask, Source
@@ -57,12 +58,14 @@ def test_research_stream_emits_steps_then_complete(tmp_path, monkeypatch):
             )
         ]
 
-    async def fake_create_answer(self, query, observations, citation_context=""):
+    async def fake_create_answer(self, query, observations, citation_context="", evidence_text=None):
         return "Answer [1]"
 
     async def fake_evaluate(self, query, answer, observations):
         return Evaluation(is_supported=True, confidence="high", missing_evidence=[], notes="ok")
 
+    # Keep the test hermetic: skip the real Chroma index / embedding-model download.
+    monkeypatch.setattr(settings, "rag_enabled", False)
     monkeypatch.setattr(ResearchPlanner, "create_plan", fake_create_plan)
     monkeypatch.setattr(ResearchExecutor, "execute", fake_execute)
     monkeypatch.setattr(ResearchSynthesizer, "create_answer", fake_create_answer)
@@ -78,7 +81,14 @@ def test_research_stream_emits_steps_then_complete(tmp_path, monkeypatch):
 
         events = _parse_sse(response.text)
         step_names = [e["step"]["name"] for e in events if e["type"] == "step"]
-        assert step_names == ["planning", "tool_execution", "cleanup", "synthesis", "evaluation"]
+        assert step_names == [
+            "planning",
+            "tool_execution",
+            "cleanup",
+            "retrieval",
+            "synthesis",
+            "evaluation",
+        ]
 
         complete = [e for e in events if e["type"] == "complete"]
         assert len(complete) == 1
